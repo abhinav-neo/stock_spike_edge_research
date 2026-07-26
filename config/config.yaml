@@ -1,0 +1,33 @@
+research:
+  start_date: "2015-01-01"
+  end_date: null
+  event_return_threshold: 0.40
+  minimum_previous_close: 1.00
+  minimum_prior_20d_avg_dollar_volume: 1000000
+  minimum_event_day_dollar_volume: 5000000
+  maximum_event_return: 10.0
+  horizons: [1, 2, 3, 5, 10, 20, 40, 60]
+  retention_levels: [1.00, 0.90, 0.80, 0.70]
+  minimum_history_days: 30
+  exclude_etfs: true
+  exclude_test_issues: true
+  exclude_special_securities: true
+  use_adjusted_prices: true
+
+validation:
+  train_end: "2019-12-31"
+  validation_start: "2020-01-01"
+  validation_end: "2022-12-31"
+  test_start: "2023-01-01"
+  minimum_events_per_rule: 100
+  minimum_events_per_test_period: 30
+  transaction_cost_bps_each_way: 25
+  slippage_bps_each_way: 25
+  bootstrap_samples: 2000
+  random_seed: 42
+
+download:
+  batch_size: 100
+  pause_seconds: 2
+  max_retries: 4
+  threads: true
