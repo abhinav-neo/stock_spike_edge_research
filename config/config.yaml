@@ -71,6 +71,10 @@ mark_to_market:
     - rule: failed_spike_cl0.30_rv1.5_px20
       horizon: 20
 
+mtm_stress_test:
+  borrow_bps_grid: [0, 500, 1000, 2000, 5000]
+  locate_probability_grid: [1.0, 0.8, 0.6, 0.4]
+
 download:
   batch_size: 100
   pause_seconds: 2
