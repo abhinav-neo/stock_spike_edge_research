@@ -47,6 +47,17 @@ walk_forward:
   fdr_alpha: 0.05
   short_borrow_bps_annual: 500
 
+dependency_validation:
+  jaccard_similarity_threshold: 0.80
+  bootstrap_samples: 2000
+  random_seed: 42
+  portfolio:
+    initial_capital: 100000
+    position_fraction: 0.05
+    max_concurrent_positions: 10
+    max_daily_entries: 3
+    stop_loss: null
+
 download:
   batch_size: 100
   pause_seconds: 2
