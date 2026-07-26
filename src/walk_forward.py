@@ -22,8 +22,9 @@ def build_folds(df: pd.DataFrame, cfg: dict) -> list[dict]:
     while fold_start <= end:
         fold_end = min(fold_start + pd.DateOffset(years=test_years) - pd.Timedelta(days=1), end)
         train_end = fold_start - pd.Timedelta(days=1)
-        train_start = dates.min()
-        if train_end >= train_start + pd.DateOffset(years=minimum_train_years):
+        train_start = dates.min().normalize()
+        minimum_train_end = train_start + pd.DateOffset(years=minimum_train_years) - pd.Timedelta(days=1)
+        if train_end >= minimum_train_end:
             folds.append({
                 "fold": fold_number,
                 "train_start": train_start,
@@ -53,7 +54,8 @@ def benjamini_hochberg(p_values: pd.Series) -> pd.Series:
 def normal_two_sided_p_value(t_stat: float) -> float:
     if not np.isfinite(t_stat):
         return 1.0
-    return float(np.math.erfc(abs(t_stat) / np.sqrt(2.0)))
+    from math import erfc, sqrt
+    return float(erfc(abs(t_stat) / sqrt(2.0)))
 
 
 def trimmed_mean(values: pd.Series, proportion: float = 0.10) -> float:
