@@ -28,3 +28,14 @@ alpha_factory:
       breakout_thresholds: [0.0, 0.02, 0.05]
       relative_volumes: [1.5, 3.0, 5.0]
       horizons: [5, 10, 20, 40]
+
+validation:
+  train_end: "2019-12-31"
+  validation_start: "2020-01-01"
+  validation_end: "2022-12-31"
+  test_start: "2023-01-01"
+  fdr_alpha: 0.05
+  minimum_train_events: 100
+  minimum_validation_events: 30
+  minimum_test_events: 30
+  minimum_positive_year_fraction: 0.60
