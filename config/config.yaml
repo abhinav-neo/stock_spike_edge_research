@@ -58,6 +58,16 @@ dependency_validation:
     max_daily_entries: 3
     stop_loss: null
 
+mark_to_market:
+  initial_capital: 100000
+  position_fraction: 0.05
+  stop_loss: 0.40
+  candidates:
+    - rule: failed_spike_cl0.40_rv3_px20
+      horizon: 60
+    - rule: failed_spike_cl0.30_rv1.5_px20
+      horizon: 20
+
 download:
   batch_size: 100
   pause_seconds: 2
