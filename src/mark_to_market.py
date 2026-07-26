@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -34,22 +35,44 @@ def build_rule_trades(events: pd.DataFrame, rule: str, horizon: int, validation_
     return selected[["symbol", "event_date", "horizon"]].sort_values("event_date")
 
 
+def apply_locate_model(
+    trades: pd.DataFrame,
+    availability_probability: float = 1.0,
+    random_seed: int = 42,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Apply a deterministic pseudo-random historical locate-availability model.
+
+    This does not claim to reconstruct actual historical locates. It is a scenario
+    test that reproducibly rejects a configured fraction of otherwise valid trades.
+    """
+    probability = float(availability_probability)
+    if not 0.0 <= probability <= 1.0:
+        raise ValueError("availability_probability must be between 0 and 1")
+    if trades.empty or probability >= 1.0:
+        return trades.copy(), trades.iloc[0:0].copy()
+
+    accepted = []
+    for _, row in trades.iterrows():
+        event_date = pd.Timestamp(row["event_date"]).strftime("%Y-%m-%d")
+        key = f"{random_seed}|{row['symbol']}|{event_date}".encode("utf-8")
+        value = int.from_bytes(hashlib.sha256(key).digest()[:8], "big") / float(2**64)
+        accepted.append(value < probability)
+    mask = pd.Series(accepted, index=trades.index)
+    return trades.loc[mask].copy(), trades.loc[~mask].copy()
+
+
 def trade_paths(
     trades: pd.DataFrame,
     prices: pd.DataFrame,
     stop_loss: float | None = None,
+    short_borrow_bps_annual: float = 0.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Construct daily paths for short trades.
-
-    A stop is gap-aware: if the session opens above the stop, the modeled cover
-    occurs at the opening price. Otherwise, an intraday high breach fills at the
-    stop price. This is still a daily-bar approximation and cannot model halts or
-    intraday slippage.
-    """
+    """Construct daily paths for short trades with gap-aware stops and borrow cost."""
     validate_prices(prices)
     px = prices.copy()
     px["date"] = pd.to_datetime(px["date"])
     px = px.sort_values(["symbol", "date"])
+    daily_borrow_rate = float(short_borrow_bps_annual) / 10000.0 / 252.0
 
     path_rows: list[dict] = []
     trade_rows: list[dict] = []
@@ -67,6 +90,7 @@ def trade_paths(
         stop_fill_type = "none"
         exit_price = float(after.iloc[-1]["close"])
         exit_date = after.iloc[-1]["date"]
+        holding_days = len(after)
         mae = 0.0
         mfe = 0.0
         stop_price = entry * (1.0 + float(stop_loss)) if stop_loss is not None else None
@@ -94,14 +118,18 @@ def trade_paths(
                     mark_price = stop_price
                     stop_fill_type = "intraday_stop"
 
-            mark_ret = (entry - mark_price) / entry
+            gross_mark_return = (entry - mark_price) / entry
+            accrued_borrow_return = daily_borrow_rate * day_number
+            mark_return = gross_mark_return - accrued_borrow_return
             path_rows.append(
                 {
                     "trade_id": trade_id,
                     "symbol": symbol,
                     "date": row["date"],
                     "day": day_number,
-                    "mark_return": mark_ret,
+                    "gross_mark_return": gross_mark_return,
+                    "accrued_borrow_return": accrued_borrow_return,
+                    "mark_return": mark_return,
                 }
             )
 
@@ -109,9 +137,12 @@ def trade_paths(
                 exit_reason = "stop"
                 exit_price = mark_price
                 exit_date = row["date"]
+                holding_days = day_number
                 break
 
-        net_return = (entry - exit_price) / entry
+        gross_return = (entry - exit_price) / entry
+        borrow_cost_return = daily_borrow_rate * holding_days
+        net_return = gross_return - borrow_cost_return
         trade_rows.append(
             {
                 "trade_id": trade_id,
@@ -120,6 +151,9 @@ def trade_paths(
                 "exit_date": exit_date,
                 "entry_price": entry,
                 "exit_price": exit_price,
+                "holding_days": holding_days,
+                "gross_return": gross_return,
+                "borrow_cost_return": borrow_cost_return,
                 "net_return": net_return,
                 "mae": mae,
                 "mfe": mfe,
@@ -133,30 +167,36 @@ def trade_paths(
 
 def _risk_statistics(equity: pd.DataFrame) -> dict:
     if equity.empty or len(equity) < 2:
-        return {"cagr": 0.0, "annualized_volatility": 0.0, "sharpe": np.nan, "sortino": np.nan, "calmar": np.nan}
+        return {"cagr": 0.0, "annualized_volatility": 0.0, "sharpe": np.nan, "sortino": np.nan, "calmar": np.nan, "active_day_sharpe": np.nan}
 
-    daily_returns = equity["equity"].pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+    daily_returns = equity["equity"].pct_change().replace([np.inf, -np.inf], np.nan)
+    valid_returns = daily_returns.dropna()
     elapsed_days = max((equity["date"].iloc[-1] - equity["date"].iloc[0]).days, 1)
     years = elapsed_days / 365.25
     start_equity = float(equity["equity"].iloc[0])
     end_equity = float(equity["equity"].iloc[-1])
     cagr = (end_equity / start_equity) ** (1.0 / years) - 1.0 if start_equity > 0 and end_equity > 0 else np.nan
 
-    volatility = float(daily_returns.std(ddof=1) * np.sqrt(252)) if len(daily_returns) > 1 else 0.0
-    mean_daily = float(daily_returns.mean()) if len(daily_returns) else 0.0
-    daily_std = float(daily_returns.std(ddof=1)) if len(daily_returns) > 1 else 0.0
-    downside = daily_returns[daily_returns < 0]
+    volatility = float(valid_returns.std(ddof=1) * np.sqrt(252)) if len(valid_returns) > 1 else 0.0
+    mean_daily = float(valid_returns.mean()) if len(valid_returns) else 0.0
+    daily_std = float(valid_returns.std(ddof=1)) if len(valid_returns) > 1 else 0.0
+    downside = valid_returns[valid_returns < 0]
     downside_std = float(downside.std(ddof=1)) if len(downside) > 1 else 0.0
     sharpe = mean_daily / daily_std * np.sqrt(252) if daily_std > 0 else np.nan
     sortino = mean_daily / downside_std * np.sqrt(252) if downside_std > 0 else np.nan
     max_drawdown = abs(float(equity["drawdown"].min()))
     calmar = cagr / max_drawdown if max_drawdown > 0 and np.isfinite(cagr) else np.nan
+
+    active_returns = daily_returns[equity["concurrent_positions"].gt(0)].dropna()
+    active_std = float(active_returns.std(ddof=1)) if len(active_returns) > 1 else 0.0
+    active_day_sharpe = float(active_returns.mean()) / active_std * np.sqrt(252) if active_std > 0 else np.nan
     return {
         "cagr": float(cagr),
         "annualized_volatility": volatility,
         "sharpe": float(sharpe) if np.isfinite(sharpe) else np.nan,
         "sortino": float(sortino) if np.isfinite(sortino) else np.nan,
         "calmar": float(calmar) if np.isfinite(calmar) else np.nan,
+        "active_day_sharpe": float(active_day_sharpe) if np.isfinite(active_day_sharpe) else np.nan,
     }
 
 
@@ -173,6 +213,11 @@ def mark_to_market_portfolio(
             "total_return": 0.0,
             "max_drawdown": 0.0,
             "trades": 0,
+            "active_days_pct": 0.0,
+            "average_gross_exposure": 0.0,
+            "maximum_gross_exposure": 0.0,
+            "average_concurrent_positions": 0.0,
+            "maximum_concurrent_positions": 0,
         }
 
     stake = initial_capital * position_fraction
@@ -184,12 +229,15 @@ def mark_to_market_portfolio(
 
     dates = pd.Index(sorted(paths["date"].unique()), name="date")
     current_marks = paths.assign(mark_pnl=paths["mark_return"] * stake).groupby("date")["mark_pnl"].sum()
+    concurrent = paths.groupby("date")["trade_id"].nunique().reindex(dates, fill_value=0).astype(int)
     realized_by_date = trades.groupby("exit_date")["pnl"].sum().reindex(dates, fill_value=0.0)
     realized_before_date = realized_by_date.cumsum().shift(1, fill_value=0.0)
 
     daily = pd.DataFrame(index=dates)
     daily["realized_pnl_prior"] = realized_before_date
     daily["active_mark_pnl"] = current_marks.reindex(dates, fill_value=0.0)
+    daily["concurrent_positions"] = concurrent
+    daily["gross_exposure"] = daily["concurrent_positions"] * position_fraction
     daily["equity"] = initial_capital + daily["realized_pnl_prior"] + daily["active_mark_pnl"]
     daily["drawdown"] = daily["equity"] / daily["equity"].cummax() - 1.0
     daily = daily.reset_index()
@@ -198,6 +246,8 @@ def mark_to_market_portfolio(
     risk = _risk_statistics(daily)
     stop_trades = trades[trades["exit_reason"] == "stop"] if "exit_reason" in trades else trades.iloc[0:0]
     gap_stops = trades[trades.get("stop_fill_type", pd.Series(index=trades.index, dtype=object)) == "gap_open"]
+    avg_exposure = float(daily["gross_exposure"].mean())
+    annualized_return_on_deployed = risk["cagr"] / avg_exposure if avg_exposure > 0 and np.isfinite(risk["cagr"]) else np.nan
 
     summary = {
         "initial_capital": initial_capital,
@@ -208,8 +258,15 @@ def mark_to_market_portfolio(
         "worst_trade": float(trades["net_return"].min()),
         "mean_mae": float(trades["mae"].mean()),
         "mean_mfe": float(trades["mfe"].mean()),
+        "total_borrow_cost": float((trades["borrow_cost_return"] * stake).sum()) if "borrow_cost_return" in trades else 0.0,
         "stop_trades": int(len(stop_trades)),
         "gap_stop_trades": int(len(gap_stops)),
+        "active_days_pct": float(daily["concurrent_positions"].gt(0).mean()),
+        "average_gross_exposure": avg_exposure,
+        "maximum_gross_exposure": float(daily["gross_exposure"].max()),
+        "average_concurrent_positions": float(daily["concurrent_positions"].mean()),
+        "maximum_concurrent_positions": int(daily["concurrent_positions"].max()),
+        "annualized_return_on_deployed_capital": float(annualized_return_on_deployed) if np.isfinite(annualized_return_on_deployed) else np.nan,
         **risk,
     }
     return daily, summary
@@ -232,8 +289,18 @@ def main() -> None:
 
     rows = []
     for spec in cfg.get("candidates", []):
-        trades = build_rule_trades(events, spec["rule"], int(spec["horizon"]), config["validation"])
-        paths, completed = trade_paths(trades, prices, cfg.get("stop_loss"))
+        candidate_trades = build_rule_trades(events, spec["rule"], int(spec["horizon"]), config["validation"])
+        trades, rejected_locates = apply_locate_model(
+            candidate_trades,
+            float(cfg.get("locate_availability_probability", 1.0)),
+            int(cfg.get("locate_random_seed", 42)),
+        )
+        paths, completed = trade_paths(
+            trades,
+            prices,
+            cfg.get("stop_loss"),
+            float(cfg.get("short_borrow_bps_annual", 0.0)),
+        )
         equity, summary = mark_to_market_portfolio(
             paths,
             completed,
@@ -243,13 +310,18 @@ def main() -> None:
         name = spec["rule"] + f"_{spec['horizon']}d"
         paths.to_csv(out / f"mtm_paths_{name}.csv", index=False)
         completed.to_csv(out / f"mtm_trades_{name}.csv", index=False)
+        rejected_locates.to_csv(out / f"mtm_rejected_locates_{name}.csv", index=False)
         equity.to_csv(out / f"mtm_equity_{name}.csv", index=False)
         rows.append(
             {
                 "rule": spec["rule"],
                 "horizon": spec["horizon"],
+                "candidate_trades": int(len(candidate_trades)),
+                "locate_rejections": int(len(rejected_locates)),
+                "locate_availability_probability": float(cfg.get("locate_availability_probability", 1.0)),
+                "short_borrow_bps_annual": float(cfg.get("short_borrow_bps_annual", 0.0)),
                 **summary,
-                "research_status": "gap_aware_daily_path_tested",
+                "research_status": "borrow_and_utilization_tested",
                 "production_approved": False,
             }
         )
