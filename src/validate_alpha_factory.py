@@ -8,7 +8,15 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from src.alpha_factory import build_features, candidate_mask, candidate_specs, _forward_return
+from src.alpha_factory import build_features, candidate_mask, candidate_specs
+
+
+def executable_forward_return(frame: pd.DataFrame, horizon: int, direction: str) -> pd.Series:
+    group = frame.groupby("symbol", group_keys=False)
+    entry_open = group["open"].shift(-1)
+    exit_close = group["close"].shift(-int(horizon))
+    gross = exit_close / entry_open - 1.0
+    return gross if direction == "long" else -gross
 
 
 def period_sample(frame: pd.DataFrame, spec: dict, cfg: dict, start: str | None, end: str | None) -> pd.DataFrame:
@@ -17,10 +25,9 @@ def period_sample(frame: pd.DataFrame, spec: dict, cfg: dict, start: str | None,
     if start:
         mask &= dates.ge(pd.Timestamp(start))
     if end:
-        # Purge entries whose forward holding period could cross the boundary.
-        cutoff = pd.Timestamp(end) - pd.tseries.offsets.BDay(int(spec["horizon"]))
+        cutoff = pd.Timestamp(end) - pd.tseries.offsets.BDay(int(spec["horizon"]) + 1)
         mask &= dates.le(cutoff)
-    forward = _forward_return(frame, int(spec["horizon"]), spec["direction"])
+    forward = executable_forward_return(frame, int(spec["horizon"]), spec["direction"])
     cost = float(cfg.get("round_trip_cost_bps", 100.0)) / 10000.0
     sample = pd.DataFrame({"date": dates.loc[mask], "net": forward.loc[mask] - cost}).dropna()
     return sample
@@ -37,7 +44,6 @@ def daily_cluster_statistics(sample: pd.DataFrame) -> dict:
     mean = float(values.mean())
     std = float(values.std(ddof=1)) if n > 1 else np.nan
     t_stat = mean / (std / math.sqrt(n)) if n > 1 and std > 0 else np.nan
-    # Conservative normal-tail approximation; FDR is applied across all candidate hypotheses.
     p_value = math.erfc(abs(t_stat) / math.sqrt(2.0)) if np.isfinite(t_stat) else np.nan
     yearly = daily.assign(year=daily["date"].dt.year).groupby("year")["net"].mean()
     return {
