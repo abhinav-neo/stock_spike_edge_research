@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 
 import argparse
@@ -10,10 +9,22 @@ import yaml
 from tqdm import tqdm
 
 
-def choose_price(frame: pd.DataFrame, adjusted: bool) -> pd.Series:
-    if adjusted and "adj_close" in frame and frame["adj_close"].notna().any():
-        return frame["adj_close"].astype(float)
-    return frame["close"].astype(float)
+def prepare_price_frame(frame: pd.DataFrame, use_adjusted_prices: bool) -> pd.DataFrame:
+    prepared = frame.copy()
+    if use_adjusted_prices:
+        if "adj_close" not in prepared:
+            raise ValueError("Adjusted prices requested, but adj_close is missing")
+
+        close = prepared["close"].astype(float)
+        adj_close = prepared["adj_close"].astype(float)
+        scale = adj_close / close
+        if (close <= 0).any() or not np.isfinite(scale).all() or (scale <= 0).any():
+            raise ValueError("Cannot construct consistently adjusted OHLC prices")
+
+        for column in ["open", "high", "low", "close"]:
+            prepared[column] = prepared[column].astype(float) * scale
+
+    return prepared
 
 
 def consecutive_days_above(values: np.ndarray, threshold: float) -> int:
@@ -31,18 +42,20 @@ def first_breach(values: np.ndarray, threshold: float) -> float:
     return float(breaches[0] + 1) if len(breaches) else np.nan
 
 
-def extract_events(path: Path, cfg: dict) -> list[dict]:
-    symbol = path.stem
-    df = pd.read_parquet(path).sort_index()
-    if len(df) < cfg["minimum_history_days"] + max(cfg["horizons"]):
+def extract_events_from_frame(symbol: str, frame: pd.DataFrame, cfg: dict) -> list[dict]:
+    symbol = str(symbol)
+    df = frame.sort_index()
+    horizons = cfg.get("horizons", [1, 2, 3, 5, 10, 20, 40, 60])
+    if not horizons or len(df) < cfg["minimum_history_days"]:
         return []
 
-    price = choose_price(df, cfg["use_adjusted_prices"])
+    prepared = prepare_price_frame(df, cfg.get("use_adjusted_prices", True))
+    price = prepared["close"].astype(float)
     prior = price.shift(1)
     daily_return = price / prior - 1
-    dollar_volume = df["volume"].astype(float) * price
+    dollar_volume = prepared["volume"].astype(float) * price
     adv20 = dollar_volume.shift(1).rolling(20, min_periods=10).mean()
-    split = df["stock_splits"] if "stock_splits" in df else pd.Series(0.0, index=df.index)
+    split = prepared["stock_splits"] if "stock_splits" in prepared else pd.Series(0.0, index=prepared.index)
 
     candidates = (
         (daily_return >= cfg["event_return_threshold"])
@@ -55,22 +68,35 @@ def extract_events(path: Path, cfg: dict) -> list[dict]:
 
     rows: list[dict] = []
     positions = np.flatnonzero(candidates.to_numpy())
+    last_accepted_date = None
+    cooldown_days = int(cfg.get("cooldown_days", 20))
+
     for pos in positions:
-        if pos + max(cfg["horizons"]) >= len(df):
+        # Horizon 1 exits at the entry session's close; horizon H exits at the
+        # close H trading sessions after the event.
+        if pos + max(horizons) >= len(prepared):
             continue
 
+        if last_accepted_date is not None:
+            delta_days = (prepared.index[pos] - last_accepted_date).days
+            if delta_days <= cooldown_days:
+                continue
+
         event_close = float(price.iloc[pos])
-        event_open = float(df["open"].iloc[pos])
-        event_high = float(df["high"].iloc[pos])
-        event_low = float(df["low"].iloc[pos])
-        future = price.iloc[pos + 1 : pos + max(cfg["horizons"]) + 1].to_numpy(float)
+        event_open = float(prepared["open"].iloc[pos])
+        event_high = float(prepared["high"].iloc[pos])
+        event_low = float(prepared["low"].iloc[pos])
+        entry_open = float(prepared["open"].iloc[pos + 1])
+        future = price.iloc[pos + 1 : pos + max(horizons) + 1].to_numpy(float)
         day_range = event_high - event_low
         close_location = (event_close - event_low) / day_range if day_range > 0 else np.nan
 
         row = {
             "symbol": symbol,
-            "event_date": df.index[pos],
+            "event_date": prepared.index[pos],
+            "entry_date": prepared.index[pos + 1],
             "previous_close": float(prior.iloc[pos]),
+            "entry_open": entry_open,
             "event_open": event_open,
             "event_high": event_high,
             "event_low": event_low,
@@ -79,24 +105,24 @@ def extract_events(path: Path, cfg: dict) -> list[dict]:
             "opening_gap": event_open / float(prior.iloc[pos]) - 1,
             "intraday_return": event_close / event_open - 1,
             "close_location": close_location,
-            "event_volume": float(df["volume"].iloc[pos]),
+            "event_volume": float(prepared["volume"].iloc[pos]),
             "event_dollar_volume": float(dollar_volume.iloc[pos]),
             "prior_20d_avg_dollar_volume": float(adv20.iloc[pos]),
             "relative_dollar_volume": float(dollar_volume.iloc[pos] / adv20.iloc[pos]),
-            "max_forward_60d_return": float(np.nanmax(future / event_close - 1)),
-            "max_forward_60d_drawdown": float(np.nanmin(future / event_close - 1)),
+            "max_forward_60d_return": float(np.nanmax((future / entry_open) - 1)),
+            "max_forward_60d_drawdown": float(np.nanmin((future / entry_open) - 1)),
         }
 
         original_gain = event_close - float(prior.iloc[pos])
-        for h in cfg["horizons"]:
-            forward_close = float(price.iloc[pos + h])
-            row[f"forward_return_{h}d"] = forward_close / event_close - 1
-            row[f"above_event_close_{h}d"] = int(forward_close >= event_close)
+        for h in horizons:
+            exit_close = float(price.iloc[pos + h])
+            row[f"forward_return_{h}d"] = exit_close / entry_open - 1
+            row[f"above_entry_open_{h}d"] = int(exit_close >= entry_open)
             if original_gain > 0:
-                retained = (forward_close - float(prior.iloc[pos])) / original_gain
+                retained = (exit_close - float(prior.iloc[pos])) / original_gain
                 row[f"gain_retention_{h}d"] = retained
 
-        for level in cfg["retention_levels"]:
+        for level in cfg.get("retention_levels", [1.0]):
             label = str(int(level * 100))
             row[f"consecutive_days_above_{label}pct_event_close"] = consecutive_days_above(
                 future, event_close * level
@@ -109,7 +135,14 @@ def extract_events(path: Path, cfg: dict) -> list[dict]:
             )
 
         rows.append(row)
+        last_accepted_date = prepared.index[pos]
     return rows
+
+
+def extract_events(path: Path, cfg: dict) -> list[dict]:
+    symbol = path.stem
+    df = pd.read_parquet(path).sort_index()
+    return extract_events_from_frame(symbol, df, cfg)
 
 
 def main() -> None:
