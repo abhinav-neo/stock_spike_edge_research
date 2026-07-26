@@ -1,7 +1,12 @@
 import pandas as pd
 import pytest
 
-from src.mark_to_market import mark_to_market_portfolio, trade_paths, validate_prices
+from src.mark_to_market import (
+    apply_locate_model,
+    mark_to_market_portfolio,
+    trade_paths,
+    validate_prices,
+)
 
 
 def sample_prices():
@@ -30,6 +35,15 @@ def test_trade_paths_uses_next_open_and_daily_extremes():
     assert completed.iloc[0]["mae"] == pytest.approx(-0.05)
 
 
+def test_trade_paths_charges_annual_borrow_cost():
+    trades = pd.DataFrame({"symbol": ["ABC"], "event_date": pd.to_datetime(["2024-01-01"]), "horizon": [3]})
+    paths, completed = trade_paths(trades, sample_prices(), short_borrow_bps_annual=2520)
+    assert completed.iloc[0]["gross_return"] == pytest.approx(0.25)
+    assert completed.iloc[0]["borrow_cost_return"] == pytest.approx(0.003)
+    assert completed.iloc[0]["net_return"] == pytest.approx(0.247)
+    assert paths.iloc[-1]["accrued_borrow_return"] == pytest.approx(0.003)
+
+
 def test_trade_paths_intraday_stop_fills_at_stop_price():
     prices = sample_prices()
     prices.loc[1, "high"] = 15.0
@@ -54,12 +68,26 @@ def test_trade_paths_gap_through_stop_fills_at_open():
     assert completed.iloc[0]["net_return"] == pytest.approx(-0.60)
 
 
-def test_mark_to_market_avoids_exit_date_double_counting():
+def test_locate_model_is_reproducible_and_can_reject_trades():
+    trades = pd.DataFrame({
+        "symbol": ["ABC", "DEF", "GHI", "JKL"],
+        "event_date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]),
+        "horizon": [20, 20, 20, 20],
+    })
+    accepted1, rejected1 = apply_locate_model(trades, 0.5, 42)
+    accepted2, rejected2 = apply_locate_model(trades, 0.5, 42)
+    pd.testing.assert_frame_equal(accepted1, accepted2)
+    pd.testing.assert_frame_equal(rejected1, rejected2)
+    assert len(accepted1) + len(rejected1) == len(trades)
+
+
+def test_mark_to_market_avoids_exit_date_double_counting_and_reports_utilization():
     trades = pd.DataFrame({
         "trade_id": [0],
         "entry_date": pd.to_datetime(["2024-01-02"]),
         "exit_date": pd.to_datetime(["2024-01-04"]),
         "net_return": [0.25],
+        "borrow_cost_return": [0.0],
         "mae": [-0.05],
         "mfe": [0.30],
         "exit_reason": ["time"],
@@ -77,6 +105,8 @@ def test_mark_to_market_avoids_exit_date_double_counting():
     assert equity.iloc[-1]["equity"] == pytest.approx(102500)
     assert summary["ending_equity"] == pytest.approx(102500)
     assert summary["total_return"] == pytest.approx(0.025)
-    assert "sharpe" in summary
-    assert "sortino" in summary
-    assert "calmar" in summary
+    assert summary["active_days_pct"] == pytest.approx(1.0)
+    assert summary["average_gross_exposure"] == pytest.approx(0.10)
+    assert summary["maximum_concurrent_positions"] == 1
+    assert "active_day_sharpe" in summary
+    assert "annualized_return_on_deployed_capital" in summary
