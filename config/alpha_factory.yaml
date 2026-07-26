@@ -50,3 +50,4 @@ alpha_portfolio:
   stop_loss: 0.25
   round_trip_cost_bps: 100
   target_cagr: 0.40
+  maximum_acceptable_drawdown: 0.25
