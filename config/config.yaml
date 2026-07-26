@@ -13,6 +13,7 @@ research:
   exclude_test_issues: true
   exclude_special_securities: true
   use_adjusted_prices: true
+  cooldown_days: 20
 
 validation:
   train_end: "2019-12-31"
@@ -25,6 +26,7 @@ validation:
   slippage_bps_each_way: 25
   bootstrap_samples: 2000
   random_seed: 42
+  horizons: [1, 2, 3, 5, 10, 20, 40, 60]
 
 download:
   batch_size: 100

@@ -4,6 +4,25 @@ This project identifies U.S. stocks that gained at least 40% from one adjusted
 daily close to the next, measures how long the spike was retained, and searches
 for continuation and failed-spike mean-reversion edges.
 
+## V2 methodology
+
+Version 2 changes the implementation to better reflect tradable execution:
+
+- Event detection still uses a +40% move from the prior close, but the event is
+  evaluated with consistently adjusted OHLC price levels rather than mixing
+  adjusted close with raw open/high/low values.
+- The tradable entry uses the next trading day's opening price, not the
+  event-day close.
+- Forward returns are calculated from the next-day open for 1, 2, 3, 5, 10,
+  20, 40, and 60 trading days. A 1-day return exits at the close of the entry
+  session; an H-day return exits at the close of the Hth trading session after
+  the event.
+- A configurable per-symbol cooldown (default 20 calendar days) suppresses
+  overlapping correlated events to reduce look-ahead and clustering effects.
+- The pipeline retains chronological train/validation/test splits and reports
+  sample size, mean, median, win rate, t-statistic, and robust score for each
+  rule while preserving the existing rule naming convention.
+
 ## Important limitations
 
 This is a zero-cost research pipeline. It is materially better than testing only
@@ -80,6 +99,13 @@ An event is:
 adjusted_close[t] / adjusted_close[t-1] - 1 >= 40%
 ```
 
+In V2, the tradeable entry is implemented as:
+
+```text
+entry_price = next_trading_day_open
+exit_price = entry_price * (1 + forward_return_h)
+```
+
 Filters:
 
 - Previous close at least $1
@@ -97,10 +123,41 @@ Edit `config/config.yaml` to change the assumptions.
 - Untouched test: January 1, 2023 onward
 - Default round-trip friction: 100 basis points total
 - Minimum samples: 100 training events and 30 events in each later period
+- Cooldown: events for the same symbol occurring 20 or fewer calendar days
+  after the prior accepted event are skipped by default; configurable with
+  `research.cooldown_days` in `config/config.yaml`
 
 The broad candidate search is intentionally simple and interpretable. Do not
 optimize thousands of opaque model parameters before establishing whether the
 basic phenomenon is stable.
+
+## Commands
+
+Run the full workflow with the V2 logic:
+
+```powershell
+python -m src.universe
+python -m src.download_prices --limit 200
+python -m src.event_study
+python -m src.analyze_edges
+```
+
+To run the unit tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+## Limitations
+
+- The next-open entry assumption still ignores market impact, spreads, slippage,
+  and partial fills that materially matter for real execution.
+- Adjusted prices are based on the available OHLCV series and may still be
+  imperfect when corporate actions or data vendor adjustments are inconsistent.
+- Cooldown filtering reduces overlap but does not fully remove clustering or
+  correlated event contamination.
+- The project remains a research pipeline and should not be treated as a
+  production-ready trading system.
 
 ## How to interpret accepted_edges.csv
 

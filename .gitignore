@@ -1,0 +1,23 @@
+# Python artifacts
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Data downloads and generated outputs
+*.parquet
+*.csv
+*.json
+*.log
+
+# Local notebooks
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

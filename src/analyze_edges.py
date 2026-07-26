@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 
 import argparse
@@ -13,8 +12,16 @@ import yaml
 def performance_stats(returns: pd.Series, cost: float) -> dict:
     r = returns.dropna() - cost
     if r.empty:
-        return {}
-    downside = r[r < 0]
+        return {
+            "n": 0,
+            "mean_return": np.nan,
+            "median_return": np.nan,
+            "win_rate": np.nan,
+            "profit_factor": np.nan,
+            "t_stat": np.nan,
+            "worst_trade": np.nan,
+            "best_trade": np.nan,
+        }
     return {
         "n": int(len(r)),
         "mean_return": float(r.mean()),
@@ -79,9 +86,10 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     }
 
     rows = []
+    horizons = cfg.get("horizons", [1, 2, 3, 5, 10, 20, 40, 60])
     for name, mask in candidate_masks(df):
         is_short = name.startswith("failed_spike")
-        for horizon in [1, 2, 3, 5, 10, 20]:
+        for horizon in horizons:
             col = f"forward_return_{horizon}d"
             if col not in df:
                 continue
@@ -105,6 +113,13 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
                 and row.get("validation_mean_return", -1) > 0
                 and row.get("test_mean_return", -1) > 0
             )
+            row["summary_metric"] = (
+                f"n={row.get('train_n', 0)}/{row.get('validation_n', 0)}/{row.get('test_n', 0)} "
+                f"mean={row.get('train_mean_return', np.nan):.3f}/{row.get('validation_mean_return', np.nan):.3f}/{row.get('test_mean_return', np.nan):.3f} "
+                f"median={row.get('train_median_return', np.nan):.3f}/{row.get('validation_median_return', np.nan):.3f}/{row.get('test_median_return', np.nan):.3f} "
+                f"win={row.get('train_win_rate', np.nan):.3f}/{row.get('validation_win_rate', np.nan):.3f}/{row.get('test_win_rate', np.nan):.3f} "
+                f"t={row.get('train_t_stat', np.nan):.3f}/{row.get('validation_t_stat', np.nan):.3f}/{row.get('test_t_stat', np.nan):.3f}"
+            )
             rows.append(row)
 
     result = pd.DataFrame(rows)
@@ -124,16 +139,21 @@ def retention_summary(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for h in [1, 2, 3, 5, 10, 20, 40, 60]:
         ret_col = f"forward_return_{h}d"
-        above_col = f"above_event_close_{h}d"
+        above_col = f"above_entry_open_{h}d"
         if ret_col not in df:
             continue
+        above_series = (
+            df[above_col]
+            if above_col in df
+            else df.get(f"above_event_close_{h}d")
+        )
         rows.append(
             {
                 "horizon_days": h,
                 "events": int(df[ret_col].notna().sum()),
                 "mean_forward_return": df[ret_col].mean(),
                 "median_forward_return": df[ret_col].median(),
-                "pct_above_event_close": df[above_col].mean(),
+                "pct_above_entry_open": above_series.mean() if above_series is not None else np.nan,
                 "pct_down_10pct_or_more": (df[ret_col] <= -0.10).mean(),
                 "pct_up_10pct_or_more": (df[ret_col] >= 0.10).mean(),
             }
@@ -169,9 +189,12 @@ def main() -> None:
     print(retention.to_string(index=False))
     print("\nTop candidate edges")
     cols = [
-        "rule", "horizon", "side", "train_n", "train_mean_return",
-        "validation_n", "validation_mean_return", "test_n",
-        "test_mean_return", "test_t_stat", "robust_score"
+        "rule", "horizon", "side", "sample_size_pass", "train_n", "train_mean_return",
+        "train_median_return", "train_win_rate", "train_t_stat",
+        "validation_n", "validation_mean_return", "validation_median_return",
+        "validation_win_rate", "validation_t_stat",
+        "test_n", "test_mean_return", "test_median_return", "test_win_rate",
+        "test_t_stat", "robust_score",
     ]
     available = [c for c in cols if c in edges]
     print(edges[available].head(20).to_string(index=False))
