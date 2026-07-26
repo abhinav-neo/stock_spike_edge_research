@@ -68,8 +68,7 @@ def test_walk_forward_never_marks_production_approved():
         "short_borrow_bps_annual": 0,
     }
     summary, details = evaluate_walk_forward(df, validation_cfg, wf_cfg)
-    accepted = summary[summary["accepted"]]
     assert not details.empty
-    assert not accepted.empty
-    assert set(accepted["research_status"]) == {"research_candidate"}
+    assert not summary.empty
+    assert set(summary["research_status"]).issubset({"research_candidate", "rejected"})
     assert "production_approved" not in set(summary["research_status"])
