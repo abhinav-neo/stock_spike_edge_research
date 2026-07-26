@@ -9,6 +9,15 @@ import pandas as pd
 import yaml
 
 
+DEFAULT_GRID = {
+    "continuation_return_bands": [[0.40, 0.60], [0.60, 1.00], [1.00, 10.00]],
+    "continuation_close_locations": [0.50, 0.75, 0.90],
+    "failed_spike_close_locations": [0.25, 0.40, 0.50],
+    "relative_volumes": [2, 5, 10],
+    "minimum_prices": [1, 3, 5, 10],
+}
+
+
 def performance_stats(returns: pd.Series, cost: float) -> dict:
     r = returns.dropna() - cost
     if r.empty:
@@ -38,35 +47,73 @@ def performance_stats(returns: pd.Series, cost: float) -> dict:
     }
 
 
-def candidate_masks(df: pd.DataFrame) -> list[tuple[str, pd.Series]]:
-    masks = []
-    return_bands = [(0.40, 0.60), (0.60, 1.00), (1.00, 10.00)]
-    close_locations = [0.50, 0.75, 0.90]
-    relative_volumes = [2, 5, 10]
-    prices = [1, 3, 5, 10]
+def load_parameter_grid(cfg: dict) -> dict:
+    grid = {**DEFAULT_GRID, **cfg.get("parameter_grid", {})}
+    for key, values in grid.items():
+        if not values:
+            raise ValueError(f"parameter_grid.{key} must contain at least one value")
+    return grid
 
-    for (lo, hi), cl, rv, px in product(
-        return_bands, close_locations, relative_volumes, prices
+
+def candidate_masks(df: pd.DataFrame, cfg: dict | None = None) -> list[dict]:
+    grid = load_parameter_grid(cfg or {})
+    candidates: list[dict] = []
+
+    for band, cl, rv, px in product(
+        grid["continuation_return_bands"],
+        grid["continuation_close_locations"],
+        grid["relative_volumes"],
+        grid["minimum_prices"],
     ):
+        lo, hi = map(float, band)
+        cl = float(cl)
+        rv = float(rv)
+        px = float(px)
         mask = (
             df["event_return"].between(lo, hi, inclusive="left")
             & (df["close_location"] >= cl)
             & (df["relative_dollar_volume"] >= rv)
             & (df["event_close"] >= px)
         )
-        name = f"continuation_ret_{lo:.2f}_{hi:.2f}_cl{cl:.2f}_rv{rv}_px{px}"
-        masks.append((name, mask))
+        candidates.append(
+            {
+                "rule": f"continuation_ret_{lo:.2f}_{hi:.2f}_cl{cl:.2f}_rv{rv:g}_px{px:g}",
+                "mask": mask,
+                "side": "long",
+                "return_low": lo,
+                "return_high": hi,
+                "close_location": cl,
+                "relative_volume": rv,
+                "minimum_price": px,
+            }
+        )
 
-    # Failed-spike masks are evaluated as short returns.
-    for cl, rv, px in product([0.25, 0.40, 0.50], relative_volumes, prices):
+    for cl, rv, px in product(
+        grid["failed_spike_close_locations"],
+        grid["relative_volumes"],
+        grid["minimum_prices"],
+    ):
+        cl = float(cl)
+        rv = float(rv)
+        px = float(px)
         mask = (
             (df["close_location"] <= cl)
             & (df["relative_dollar_volume"] >= rv)
             & (df["event_close"] >= px)
         )
-        name = f"failed_spike_cl{cl:.2f}_rv{rv}_px{px}"
-        masks.append((name, mask))
-    return masks
+        candidates.append(
+            {
+                "rule": f"failed_spike_cl{cl:.2f}_rv{rv:g}_px{px:g}",
+                "mask": mask,
+                "side": "short",
+                "return_low": np.nan,
+                "return_high": np.nan,
+                "close_location": cl,
+                "relative_volume": rv,
+                "minimum_price": px,
+            }
+        )
+    return candidates
 
 
 def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
@@ -78,6 +125,7 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
         cfg["transaction_cost_bps_each_way"] + cfg["slippage_bps_each_way"]
     ) / 10_000
 
+    df = df.copy()
     df["event_date"] = pd.to_datetime(df["event_date"])
     periods = {
         "train": df["event_date"] <= train_end,
@@ -87,24 +135,27 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
     rows = []
     horizons = cfg.get("horizons", [1, 2, 3, 5, 10, 20, 40, 60])
-    for name, mask in candidate_masks(df):
-        is_short = name.startswith("failed_spike")
+    for candidate in candidate_masks(df, cfg):
         for horizon in horizons:
             col = f"forward_return_{horizon}d"
             if col not in df:
                 continue
-            row = {"rule": name, "horizon": horizon, "side": "short" if is_short else "long"}
+            row = {key: value for key, value in candidate.items() if key != "mask"}
+            row["horizon"] = horizon
             valid = True
             for period, period_mask in periods.items():
-                returns = df.loc[mask & period_mask, col]
-                if is_short:
+                returns = df.loc[candidate["mask"] & period_mask, col]
+                if candidate["side"] == "short":
                     returns = -returns
                 stats = performance_stats(returns, cost)
                 for key, value in stats.items():
                     row[f"{period}_{key}"] = value
-                if period == "train" and stats.get("n", 0) < cfg["minimum_events_per_rule"]:
-                    valid = False
-                if period in {"validation", "test"} and stats.get("n", 0) < cfg["minimum_events_per_test_period"]:
+                minimum = (
+                    cfg["minimum_events_per_rule"]
+                    if period == "train"
+                    else cfg["minimum_events_per_test_period"]
+                )
+                if stats["n"] < minimum:
                     valid = False
             row["sample_size_pass"] = valid
             row["stable_positive"] = bool(
@@ -112,13 +163,6 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
                 and row.get("train_mean_return", -1) > 0
                 and row.get("validation_mean_return", -1) > 0
                 and row.get("test_mean_return", -1) > 0
-            )
-            row["summary_metric"] = (
-                f"n={row.get('train_n', 0)}/{row.get('validation_n', 0)}/{row.get('test_n', 0)} "
-                f"mean={row.get('train_mean_return', np.nan):.3f}/{row.get('validation_mean_return', np.nan):.3f}/{row.get('test_mean_return', np.nan):.3f} "
-                f"median={row.get('train_median_return', np.nan):.3f}/{row.get('validation_median_return', np.nan):.3f}/{row.get('test_median_return', np.nan):.3f} "
-                f"win={row.get('train_win_rate', np.nan):.3f}/{row.get('validation_win_rate', np.nan):.3f}/{row.get('test_win_rate', np.nan):.3f} "
-                f"t={row.get('train_t_stat', np.nan):.3f}/{row.get('validation_t_stat', np.nan):.3f}/{row.get('test_t_stat', np.nan):.3f}"
             )
             rows.append(row)
 
@@ -133,6 +177,39 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
             ["stable_positive", "robust_score"], ascending=[False, False]
         )
     return result
+
+
+def parameter_stability(edges: pd.DataFrame) -> pd.DataFrame:
+    frames = []
+    for parameter in ["close_location", "relative_volume", "minimum_price", "horizon"]:
+        grouped = (
+            edges.groupby(["side", parameter], dropna=False)
+            .agg(
+                rules=("rule", "count"),
+                passing_rules=("sample_size_pass", "sum"),
+                median_robust_score=("robust_score", "median"),
+                median_test_mean_return=("test_mean_return", "median"),
+                median_test_win_rate=("test_win_rate", "median"),
+                median_test_t_stat=("test_t_stat", "median"),
+            )
+            .reset_index()
+            .rename(columns={parameter: "parameter_value"})
+        )
+        grouped.insert(1, "parameter", parameter)
+        frames.append(grouped)
+    return pd.concat(frames, ignore_index=True)
+
+
+def write_heatmap_tables(edges: pd.DataFrame, output_dir: Path) -> None:
+    failed = edges[edges["side"] == "short"]
+    for horizon in sorted(failed["horizon"].dropna().unique()):
+        matrix = failed[failed["horizon"] == horizon].pivot_table(
+            index="close_location",
+            columns="relative_volume",
+            values="robust_score",
+            aggfunc="median",
+        )
+        matrix.to_csv(output_dir / f"heatmap_failed_spike_h{int(horizon)}_cl_vs_rv.csv")
 
 
 def retention_summary(df: pd.DataFrame) -> pd.DataFrame:
@@ -153,7 +230,9 @@ def retention_summary(df: pd.DataFrame) -> pd.DataFrame:
                 "events": int(df[ret_col].notna().sum()),
                 "mean_forward_return": df[ret_col].mean(),
                 "median_forward_return": df[ret_col].median(),
-                "pct_above_entry_open": above_series.mean() if above_series is not None else np.nan,
+                "pct_above_entry_open": above_series.mean()
+                if above_series is not None
+                else np.nan,
                 "pct_down_10pct_or_more": (df[ret_col] <= -0.10).mean(),
                 "pct_up_10pct_or_more": (df[ret_col] >= 0.10).mean(),
             }
@@ -185,20 +264,22 @@ def main() -> None:
     ]
     accepted.to_csv(out / "accepted_edges.csv", index=False)
 
+    parameter_stability(edges).to_csv(out / "parameter_stability.csv", index=False)
+    write_heatmap_tables(edges, out)
+
     print("\nRetention summary")
     print(retention.to_string(index=False))
     print("\nTop candidate edges")
     cols = [
-        "rule", "horizon", "side", "sample_size_pass", "train_n", "train_mean_return",
-        "train_median_return", "train_win_rate", "train_t_stat",
+        "rule", "horizon", "side", "sample_size_pass", "train_n",
+        "train_mean_return", "train_median_return", "train_win_rate", "train_t_stat",
         "validation_n", "validation_mean_return", "validation_median_return",
-        "validation_win_rate", "validation_t_stat",
-        "test_n", "test_mean_return", "test_median_return", "test_win_rate",
-        "test_t_stat", "robust_score",
+        "validation_win_rate", "validation_t_stat", "test_n", "test_mean_return",
+        "test_median_return", "test_win_rate", "test_t_stat", "robust_score",
     ]
-    available = [c for c in cols if c in edges]
-    print(edges[available].head(20).to_string(index=False))
+    print(edges[[c for c in cols if c in edges]].head(20).to_string(index=False))
     print(f"\nAccepted robust edges: {len(accepted)}")
+    print(f"Parameter combinations evaluated: {len(edges)}")
 
 
 if __name__ == "__main__":
