@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from src.paper_fill_tracker import process_orders, mark_positions
 
@@ -37,8 +38,8 @@ def test_short_fill_uses_adverse_slippage_and_rebased_stop() -> None:
     assert pending.empty
     assert len(fills) == 1
     fill = fills.iloc[0]
-    assert fill["fill_price"] == 102.0 * (1.0 - 0.0005)
-    assert fill["active_stop_price"] == fill["fill_price"] * 1.25
+    assert fill["fill_price"] == pytest.approx(102.0 * (1.0 - 0.0005))
+    assert fill["active_stop_price"] == pytest.approx(fill["fill_price"] * 1.25)
     assert fill["fill_status"] == "PAPER_FILLED"
 
 
@@ -58,6 +59,6 @@ def test_short_mark_to_market_profit_when_price_falls() -> None:
         {"symbol": "SAFT", "date": pd.Timestamp("2026-07-28"), "close": 90.0},
     ])
     positions = mark_positions(fills, prices)
-    assert positions.iloc[0]["gross_return"] == 0.10
-    assert positions.iloc[0]["unrealized_pnl"] == 190.0
+    assert positions.iloc[0]["gross_return"] == pytest.approx(0.10)
+    assert positions.iloc[0]["unrealized_pnl"] == pytest.approx(190.0)
     assert not bool(positions.iloc[0]["live_submission_enabled"])
