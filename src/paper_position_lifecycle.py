@@ -70,6 +70,13 @@ def process_positions(fills: pd.DataFrame, prices: pd.DataFrame, paper_cfg: dict
     return frame[frame["position_status"].eq("OPEN")].copy(), frame[frame["position_status"].eq("CLOSED")].copy()
 
 
+def _read_csv_allow_empty(path: Path) -> pd.DataFrame:
+    try:
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Track paper-position exits and realized PnL; never submits orders.")
     parser.add_argument("--config", default="config/alpha_factory.yaml")
@@ -82,14 +89,15 @@ def main() -> None:
     if not fills_path.exists():
         raise FileNotFoundError(f"Missing fills: {fills_path}. Run src.paper_fill_tracker first.")
     root = yaml.safe_load(Path(args.config).read_text())
-    fills = pd.read_csv(fills_path)
+    fills = _read_csv_allow_empty(fills_path)
     prices = pd.read_parquet(args.prices)
     prices["date"] = pd.to_datetime(prices["date"])
     if len(fills):
         fills["fill_date"] = pd.to_datetime(fills["fill_date"])
     open_positions, closed = process_positions(fills, prices, root.get("paper_trading", {}))
 
-    output = Path(args.output_dir); output.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output_dir)
+    output.mkdir(parents=True, exist_ok=True)
     open_positions.to_csv(output / "paper_open_positions.csv", index=False)
     closed.to_csv(output / "paper_closed_positions.csv", index=False)
     summary = {"fills": int(len(fills)), "open_positions": int(len(open_positions)), "closed_positions": int(len(closed)),
