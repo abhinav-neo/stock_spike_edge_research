@@ -52,6 +52,21 @@ alpha_portfolio:
   target_cagr: 0.40
   maximum_acceptable_drawdown: 0.25
 
+gap_fade_controlled:
+  initial_capital: 100000
+  position_fraction: 0.02
+  maximum_candidates: 2
+  max_daily_entries: 2
+  max_concurrent_positions: 6
+  stop_loss: 0.20
+  round_trip_cost_bps: 100
+  minimum_entry_price: 5.0
+  maximum_entry_price: 1000.0
+  minimum_avg_dollar_volume: 10000000
+  minimum_close_ratio: 0.20
+  maximum_close_ratio: 5.0
+  live_submission_enabled: false
+
 paper_trading:
   paper_capital: 100000
   position_fraction: 0.02
