@@ -21,7 +21,7 @@ def normalize_download(raw: pd.DataFrame, symbol: str) -> pd.DataFrame:
             frame.columns = frame.columns.get_level_values(0)
     frame = frame.reset_index()
     frame.columns = [str(column).strip().lower().replace(" ", "_") for column in frame.columns]
-    frame = frame.rename(columns={"datetime": "date", "adj_close": "adj_close"})
+    frame = frame.rename(columns={"datetime": "date"})
     if "date" not in frame.columns:
         raise ValueError(f"Downloaded data for {symbol} has no date column")
     frame["symbol"] = symbol.upper()
@@ -44,7 +44,8 @@ def merge_prices(existing: pd.DataFrame, updates: pd.DataFrame) -> pd.DataFrame:
     for column in PRICE_COLUMNS:
         if column not in merged.columns:
             merged[column] = pd.NA
-    return (merged[PRICE_COLUMNS]
+    ordered_columns = PRICE_COLUMNS + [column for column in merged.columns if column not in PRICE_COLUMNS]
+    return (merged[ordered_columns]
             .drop_duplicates(["symbol", "date"], keep="last")
             .sort_values(["symbol", "date"])
             .reset_index(drop=True))
@@ -52,8 +53,6 @@ def merge_prices(existing: pd.DataFrame, updates: pd.DataFrame) -> pd.DataFrame:
 
 def discover_symbols(existing: pd.DataFrame, orders_path: Path, explicit: list[str]) -> list[str]:
     symbols = {value.upper() for value in explicit if value.strip()}
-    if not existing.empty and "symbol" in existing.columns:
-        symbols.update(existing["symbol"].dropna().astype(str).str.upper())
     if orders_path.exists() and orders_path.stat().st_size:
         try:
             orders = pd.read_csv(orders_path)
@@ -61,6 +60,8 @@ def discover_symbols(existing: pd.DataFrame, orders_path: Path, explicit: list[s
                 symbols.update(orders["symbol"].dropna().astype(str).str.upper())
         except pd.errors.EmptyDataError:
             pass
+    if not symbols and not existing.empty and "symbol" in existing.columns:
+        symbols.update(existing["symbol"].dropna().astype(str).str.upper())
     return sorted(symbols)
 
 
@@ -102,7 +103,7 @@ def main() -> None:
     args = parser.parse_args()
 
     summary = update_market_data(Path(args.output), Path(args.orders), args.symbols, date.fromisoformat(args.end_date))
-    print(pd.DataFrame([{**summary, "failed_symbols": ",".join(summary["failed_symbols"]) }]).to_string(index=False))
+    print(pd.DataFrame([{**summary, "failed_symbols": ",".join(summary["failed_symbols"])}]).to_string(index=False))
 
 
 if __name__ == "__main__":
