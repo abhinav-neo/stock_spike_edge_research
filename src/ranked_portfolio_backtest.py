@@ -8,31 +8,44 @@ import numpy as np
 import pandas as pd
 
 
-def select_daily_candidates(frame: pd.DataFrame, side: str, fraction: float) -> pd.DataFrame:
-    groups = []
-    for _, group in frame.groupby("event_date"):
-        count = max(1, int(np.ceil(len(group) * fraction)))
-        chosen = group.nlargest(count, "predicted_return") if side == "long" else group.nsmallest(count, "predicted_return")
-        groups.append(chosen)
-    if not groups:
-        return frame.iloc[0:0].copy()
-    ascending_prediction = side == "short"
-    return pd.concat(groups, ignore_index=True).sort_values(
-        ["event_date", "predicted_return"], ascending=[True, ascending_prediction]
+def score_threshold(source: pd.DataFrame, side: str, fraction: float, threshold_period: str) -> float:
+    if not 0 < fraction < 1:
+        raise ValueError("fraction must be between 0 and 1")
+    if "period" not in source.columns:
+        raise ValueError("Prediction file must include period so thresholds can be calibrated without test leakage")
+    calibration = source.loc[source["period"] == threshold_period, "predicted_return"].dropna().astype(float)
+    if calibration.empty:
+        raise ValueError(f"No predictions found for threshold-period={threshold_period}")
+    quantile = 1.0 - fraction if side == "long" else fraction
+    return float(calibration.quantile(quantile))
+
+
+def select_candidates(frame: pd.DataFrame, side: str, threshold: float) -> pd.DataFrame:
+    if side == "long":
+        selected = frame.loc[frame["predicted_return"] >= threshold].copy()
+        ascending_prediction = False
+    else:
+        selected = frame.loc[frame["predicted_return"] <= threshold].copy()
+        ascending_prediction = True
+    return selected.sort_values(
+        ["event_date", "predicted_return"],
+        ascending=[True, ascending_prediction],
     )
 
 
 def simulate(
     frame: pd.DataFrame,
     side: str,
+    threshold: float,
     fraction: float,
+    threshold_period: str,
     holding_days: int,
     initial_capital: float,
     max_positions: int,
     cost_bps: float,
     borrow_bps_per_day: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    candidates = select_daily_candidates(frame, side, fraction)
+    candidates = select_candidates(frame, side, threshold)
     cash = float(initial_capital)
     realized_equity = float(initial_capital)
     open_positions: list[dict] = []
@@ -44,19 +57,19 @@ def simulate(
 
     def close_positions(up_to_date: pd.Timestamp) -> None:
         nonlocal cash, realized_equity, open_positions
-        remaining = []
-        for position in open_positions:
-            if position["exit_date"] <= up_to_date:
-                cash += position["notional"] + position["pnl"]
-                realized_equity += position["pnl"]
-                equity_events.append({
+        closing = [position for position in open_positions if position["exit_date"] <= up_to_date]
+        remaining = [position for position in open_positions if position["exit_date"] > up_to_date]
+        for position in sorted(closing, key=lambda item: item["exit_date"]):
+            cash += position["notional"] + position["pnl"]
+            realized_equity += position["pnl"]
+            equity_events.append(
+                {
                     "date": position["exit_date"],
                     "equity": realized_equity,
                     "cash": cash,
-                    "open_positions": len(open_positions) - 1,
-                })
-            else:
-                remaining.append(position)
+                    "open_positions": len(remaining),
+                }
+            )
         open_positions = remaining
 
     for row in candidates.itertuples(index=False):
@@ -81,27 +94,43 @@ def simulate(
             "pnl": pnl,
         }
         open_positions.append(position)
-        trades.append({
-            **position,
-            "side": side,
-            "predicted_return": float(row.predicted_return),
-            "actual_return": float(row.actual_return),
-            "gross_strategy_return": gross_return,
-            "net_strategy_return": net_return,
-            "cash_after_entry": cash,
-        })
+        trades.append(
+            {
+                **position,
+                "side": side,
+                "predicted_return": float(row.predicted_return),
+                "actual_return": float(row.actual_return),
+                "gross_strategy_return": gross_return,
+                "net_strategy_return": net_return,
+                "cash_after_entry": cash,
+            }
+        )
 
     if open_positions:
         close_positions(max(position["exit_date"] for position in open_positions))
 
     trades_df = pd.DataFrame(trades)
     equity_df = pd.DataFrame(equity_events)
+    base_summary = {
+        "side": side,
+        "selection_fraction": fraction,
+        "threshold_period": threshold_period,
+        "prediction_threshold": threshold,
+        "eligible_candidates": int(len(candidates)),
+        "holding_days": holding_days,
+        "initial_capital": initial_capital,
+        "max_positions": max_positions,
+        "allocation_per_position": allocation_per_position,
+        "cost_bps_round_trip": cost_bps,
+        "borrow_bps_per_day": borrow_bps_per_day,
+    }
     if trades_df.empty:
         return trades_df, equity_df, {
-            "side": side,
+            **base_summary,
             "trades": 0,
-            "initial_capital": initial_capital,
             "ending_capital": initial_capital,
+            "total_return": 0.0,
+            "warning": "No test predictions crossed the validation-calibrated threshold.",
         }
 
     equity_df = equity_df.sort_values("date").drop_duplicates("date", keep="last")
@@ -119,11 +148,8 @@ def simulate(
         else np.nan
     )
     summary = {
-        "side": side,
-        "selection_fraction": fraction,
-        "holding_days": holding_days,
+        **base_summary,
         "trades": int(len(trades_df)),
-        "initial_capital": initial_capital,
         "ending_capital": ending_capital,
         "total_return": ending_capital / initial_capital - 1,
         "cagr": float(cagr),
@@ -132,11 +158,10 @@ def simulate(
         "median_net_trade_return": float(returns.median()),
         "win_rate": float((returns > 0).mean()),
         "trade_level_sharpe_proxy": sharpe_proxy,
-        "max_positions": max_positions,
-        "allocation_per_position": allocation_per_position,
-        "cost_bps_round_trip": cost_bps,
-        "borrow_bps_per_day": borrow_bps_per_day,
-        "warning": "Uses fixed-horizon event returns and realized-equity drawdown. It does not model intraday fills, mark-to-market paths, halts, locate failures, margin calls, or changing borrow availability.",
+        "warning": (
+            "Uses fixed-horizon event returns and realized-equity drawdown. It does not model intraday fills, "
+            "mark-to-market paths, halts, locate failures, margin calls, or changing borrow availability."
+        ),
     }
     return trades_df, equity_df, summary
 
@@ -146,6 +171,7 @@ def main() -> None:
     parser.add_argument("--input", required=True)
     parser.add_argument("--target", default="forward_return_5d")
     parser.add_argument("--period", default="test")
+    parser.add_argument("--threshold-period", default="validation")
     parser.add_argument("--side", choices=["long", "short", "both"], default="both")
     parser.add_argument("--fraction", type=float, default=0.10)
     parser.add_argument("--holding-days", type=int, default=5)
@@ -157,27 +183,29 @@ def main() -> None:
     args = parser.parse_args()
 
     source = pd.read_csv(args.input)
-    required = {"symbol", "event_date", args.target, "predicted_return"}
+    required = {"symbol", "event_date", args.target, "predicted_return", "period"}
     missing = required.difference(source.columns)
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")
-    if "period" in source.columns:
-        source = source.loc[source["period"] == args.period].copy()
     source["event_date"] = pd.to_datetime(source["event_date"])
     source = source.rename(columns={args.target: "actual_return"})
     source = source.replace([np.inf, -np.inf], np.nan).dropna(subset=["actual_return", "predicted_return"])
-    if source.empty:
-        raise ValueError("No valid prediction rows remain after filtering")
+    evaluation = source.loc[source["period"] == args.period].copy()
+    if evaluation.empty:
+        raise ValueError(f"No valid prediction rows remain for period={args.period}")
 
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     sides = ["long", "short"] if args.side == "both" else [args.side]
     summaries = {}
     for side in sides:
+        threshold = score_threshold(source, side, args.fraction, args.threshold_period)
         trades, equity, summary = simulate(
-            source,
+            evaluation,
             side,
+            threshold,
             args.fraction,
+            args.threshold_period,
             args.holding_days,
             args.initial_capital,
             args.max_positions,
