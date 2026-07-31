@@ -43,3 +43,9 @@ There is no direct leakage found after the boundary purge. Overfitting and resea
 ## Bottom line
 
 The short edge survives both tested price/liquidity filters: even the strict scenario retains positive CAGR and a profit factor above one. The strict scenario is the more credible headline number. Even then, paper trading requires historical locate/borrow data, daily mark-to-market and halt modeling, and a genuinely untouched forward period. Until those gaps are closed, the strategy is research-only.
+
+## Subsequent daily mark-to-market research
+
+Daily path reconstruction confirms that the earlier realized-equity statistics understated short-squeeze risk. Under a 70% locate scenario, 10% annual borrow, 1% round-trip cost, and the risk rule selected only on 2020-2022 validation data, the 2023+ test produced 15.68% CAGR, -20.55% maximum drawdown, 1.03 daily Sharpe, and 2.13 profit factor across 47 located trades. Aligned SPY returned 71.52% versus the strategy's 59.69%.
+
+The worst short lost 322.1%, and all conventional 20%-100% stops lost money during validation. This is now the controlling conclusion: the ranking signal is real enough to continue studying, but no historically validated exit rule safely contains squeeze risk. The strategy remains unsuitable for paper trading until broker margin, forced liquidation, actual locates, and quoted borrow rates are modeled prospectively. See `reports/v5_mtm_research/ASSESSMENT.md` for the full stress analysis.
