@@ -29,8 +29,8 @@ def apply_tradeability_filters(
     filtered = frame.copy()
     diagnostics: dict[str, object] = {"rows_before_tradeability_filters": int(len(filtered))}
     requested = {
-        "min_price": (min_price, ["entry_price", "price", "close"]),
-        "min_dollar_volume": (min_dollar_volume, ["avg_dollar_volume_20d", "dollar_volume_20d", "dollar_volume"]),
+        "min_price": (min_price, ["entry_open", "event_close", "entry_price", "price", "close"]),
+        "min_dollar_volume": (min_dollar_volume, ["prior_20d_avg_dollar_volume", "avg_dollar_volume_20d", "dollar_volume_20d", "dollar_volume"]),
         "min_market_cap": (min_market_cap, ["market_cap"]),
     }
     for label, (minimum, candidates) in requested.items():
@@ -46,6 +46,27 @@ def apply_tradeability_filters(
         diagnostics[f"removed_by_{label}"] = int(before - len(filtered))
     diagnostics["rows_after_tradeability_filters"] = int(len(filtered))
     return filtered, diagnostics
+
+
+def join_feature_data(predictions: pd.DataFrame, features: pd.DataFrame) -> pd.DataFrame:
+    """Join event-time tradeability fields without relying on row order."""
+    keys = ["symbol", "event_date"]
+    missing = set(keys).difference(features.columns)
+    if missing:
+        raise ValueError(f"Feature data missing join keys: {sorted(missing)}")
+    left = predictions.copy()
+    right = features.copy()
+    left["event_date"] = pd.to_datetime(left["event_date"]).dt.normalize()
+    right["event_date"] = pd.to_datetime(right["event_date"]).dt.normalize()
+    if right.duplicated(keys).any():
+        raise ValueError("Feature data contains duplicate symbol/event_date keys")
+    available = [
+        column for column in (
+            "entry_date", "entry_open", "event_close", "prior_20d_avg_dollar_volume",
+            "avg_dollar_volume_20d", "market_cap",
+        ) if column in right.columns and column not in left.columns
+    ]
+    return left.merge(right[keys + available], on=keys, how="left", validate="many_to_one")
 
 
 def select_candidates(frame: pd.DataFrame, side: str, threshold: float) -> pd.DataFrame:
@@ -102,7 +123,9 @@ def simulate(
         open_positions = remaining
 
     for row in candidates.itertuples(index=False):
-        entry_date = pd.Timestamp(row.event_date)
+        entry_date = pd.Timestamp(
+            row.entry_date if hasattr(row, "entry_date") and pd.notna(row.entry_date) else row.event_date
+        )
         close_positions(entry_date)
         open_symbols = {str(position["symbol"]) for position in open_positions}
         if prevent_symbol_overlap and str(row.symbol) in open_symbols:
@@ -233,6 +256,7 @@ def simulate(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capital-reserving ranked portfolio backtest")
     parser.add_argument("--input", required=True)
+    parser.add_argument("--features", default=None, help="Optional V5 feature file joined by symbol/event_date")
     parser.add_argument("--target", default="forward_return_5d")
     parser.add_argument("--period", default="test")
     parser.add_argument("--threshold-period", default="validation")
@@ -251,6 +275,10 @@ def main() -> None:
     args = parser.parse_args()
 
     source = pd.read_csv(args.input)
+    if args.features:
+        feature_path = Path(args.features)
+        features = pd.read_parquet(feature_path) if feature_path.suffix == ".parquet" else pd.read_csv(feature_path)
+        source = join_feature_data(source, features)
     required = {"symbol", "event_date", args.target, "predicted_return", "period"}
     missing = required.difference(source.columns)
     if missing:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,7 @@ NON_FEATURE_COLUMNS = {
     "symbol",
     "event_date",
     "entry_date",
+    "entry_open",
     "status",
     "side",
     "sample_size_pass",
@@ -33,15 +35,36 @@ def chronological_split(
     data: pd.DataFrame,
     train_end: str,
     validation_end: str,
+    target_horizon_days: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     dates = pd.to_datetime(data["event_date"])
     train_cutoff = pd.Timestamp(train_end)
     validation_cutoff = pd.Timestamp(validation_end)
 
-    train = data.loc[dates <= train_cutoff].copy()
-    validation = data.loc[(dates > train_cutoff) & (dates <= validation_cutoff)].copy()
+    label_start = (
+        pd.to_datetime(data["entry_date"])
+        if "entry_date" in data.columns
+        else dates + pd.offsets.BDay(1)
+    )
+    label_end = label_start + pd.offsets.BDay(target_horizon_days)
+
+    # Purge observations whose forward outcome crosses a split boundary.  A
+    # chronological row split alone leaks future-period prices through labels.
+    train = data.loc[(dates <= train_cutoff) & (label_end <= train_cutoff)].copy()
+    validation = data.loc[
+        (dates > train_cutoff)
+        & (dates <= validation_cutoff)
+        & (label_end <= validation_cutoff)
+    ].copy()
     test = data.loc[dates > validation_cutoff].copy()
     return train, validation, test
+
+
+def target_horizon(target: str) -> int:
+    match = re.fullmatch(r"forward_return_(\d+)d", target)
+    if not match:
+        raise ValueError(f"Cannot infer forward horizon from target: {target}")
+    return int(match.group(1))
 
 
 def select_features(data: pd.DataFrame, target: str) -> list[str]:
@@ -178,7 +201,10 @@ def main() -> None:
 
     data = data.loc[data[args.target].notna()].copy()
     data["event_date"] = pd.to_datetime(data["event_date"])
-    train, validation, test = chronological_split(data, args.train_end, args.validation_end)
+    horizon = target_horizon(args.target)
+    train, validation, test = chronological_split(
+        data, args.train_end, args.validation_end, target_horizon_days=horizon
+    )
 
     if train.empty or validation.empty or test.empty:
         raise ValueError(

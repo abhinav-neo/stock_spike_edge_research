@@ -9,7 +9,19 @@ import pandas as pd
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from src.train_predictive_model import build_pipeline, select_features
+from src.train_predictive_model import build_pipeline, select_features, target_horizon
+
+
+def prior_year_training_mask(data: pd.DataFrame, test_year: int, horizon: int) -> pd.Series:
+    event_dates = pd.to_datetime(data["event_date"])
+    label_start = (
+        pd.to_datetime(data["entry_date"])
+        if "entry_date" in data.columns
+        else event_dates + pd.offsets.BDay(1)
+    )
+    label_end = label_start + pd.offsets.BDay(horizon)
+    test_start = pd.Timestamp(year=test_year, month=1, day=1)
+    return (event_dates.dt.year < test_year) & (label_end < test_start)
 
 
 def evaluate(actual: pd.Series, predicted: np.ndarray) -> dict:
@@ -77,7 +89,10 @@ def main() -> None:
 
     data = data.loc[data[args.target].notna()].copy()
     data["event_date"] = pd.to_datetime(data["event_date"])
+    if "entry_date" in data.columns:
+        data["entry_date"] = pd.to_datetime(data["entry_date"])
     data["year"] = data["event_date"].dt.year
+    horizon = target_horizon(args.target)
     features = select_features(data.drop(columns=["year"]), args.target)
     available_years = sorted(data["year"].unique())
     last_year = args.last_test_year or max(available_years)
@@ -91,7 +106,7 @@ def main() -> None:
     importance_frames: list[pd.DataFrame] = []
 
     for year in test_years:
-        train = data.loc[data["year"] < year].copy()
+        train = data.loc[prior_year_training_mask(data, int(year), horizon)].copy()
         test = data.loc[data["year"] == year].copy()
         if len(train) < args.minimum_train_events or test.empty:
             fold_rows.append({

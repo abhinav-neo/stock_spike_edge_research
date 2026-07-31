@@ -212,6 +212,7 @@ def main() -> None:
     parser.add_argument("--max-positions", type=int, default=10)
     parser.add_argument("--cost-bps", type=float, default=30.0)
     parser.add_argument("--borrow-bps-per-day", type=float, default=10.0)
+    parser.add_argument("--skip-portfolio", action="store_true")
     args = parser.parse_args()
 
     source = pd.read_csv(args.input)
@@ -237,19 +238,25 @@ def main() -> None:
     yearly.to_csv(output / "yearly_stability.csv", index=False)
 
     summaries = {}
-    for side in ("long", "short"):
-        trades, summary = simulate_ranked_portfolio(
-            frame=frame,
-            side=side,
-            selection_fraction=args.top_fraction,
-            holding_days=args.holding_days,
-            initial_capital=args.initial_capital,
-            max_positions=args.max_positions,
-            cost_bps_round_trip=args.cost_bps,
-            borrow_bps_per_day=args.borrow_bps_per_day,
-        )
-        trades.to_csv(output / f"{side}_portfolio_trades.csv", index=False)
-        summaries[side] = summary
+    if args.skip_portfolio:
+        for side in ("long", "short"):
+            stale = output / f"{side}_portfolio_trades.csv"
+            if stale.exists():
+                stale.unlink()
+    else:
+        for side in ("long", "short"):
+            trades, summary = simulate_ranked_portfolio(
+                frame=frame,
+                side=side,
+                selection_fraction=args.top_fraction,
+                holding_days=args.holding_days,
+                initial_capital=args.initial_capital,
+                max_positions=args.max_positions,
+                cost_bps_round_trip=args.cost_bps,
+                borrow_bps_per_day=args.borrow_bps_per_day,
+            )
+            trades.to_csv(output / f"{side}_portfolio_trades.csv", index=False)
+            summaries[side] = summary
 
     report = {
         "input": args.input,
@@ -267,8 +274,9 @@ def main() -> None:
     print(percentiles[["group", "trades", "avg_actual_return", "median_actual_return", "win_rate"]].to_string(index=False))
     print("\nYearly stability")
     print(yearly.to_string(index=False))
-    print("\nPortfolio summaries")
-    print(json.dumps(summaries, indent=2, default=str))
+    if not args.skip_portfolio:
+        print("\nPortfolio summaries")
+        print(json.dumps(summaries, indent=2, default=str))
     print(f"\nWrote ranked analysis to {output}")
 
 
