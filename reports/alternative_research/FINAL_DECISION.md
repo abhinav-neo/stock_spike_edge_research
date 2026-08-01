@@ -57,3 +57,7 @@ SPY regime, VIX regime, inferred sector-relative features, and an alternate grad
 ## Free FINRA short-volume follow-up
 
 Free FINRA daily short-sale volume was integrated with 83.5% exact symbol/event-date coverage. A ratio-only feature modestly improved validation correlation (0.0700 versus 0.0661) and mean yearly walk-forward correlation (0.1611 versus 0.1534), while worsening test correlation and yearly spread. The strict portfolio improved from 21.11% to 22.27% CAGR but contained a -321.70% short loss on allocated notional. FINRA transaction volume is not borrow availability or short interest. The feature is retained for research, but the zero-allocation and no-paper-trading decision is unchanged.
+
+## Free SEC fails-to-deliver follow-up
+
+All 274 required SEC half-month archives were integrated using conservative publication availability rather than settlement-date hindsight. SEC FTD alone worsened validation correlation and yearly spread. Combining FTD with the FINRA ratio improved test and average walk-forward correlation but did not improve validation and remained below V5 on yearly spread. FTD thresholds also failed to identify the catastrophic SMX short without test-informed tuning. The variants are rejected; accepted allocation remains zero.

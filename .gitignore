@@ -14,6 +14,7 @@ venv/
 *.csv
 *.json
 *.log
+data/raw/sec_ftd_archives/
 
 # Local notebooks
 .ipynb_checkpoints/
