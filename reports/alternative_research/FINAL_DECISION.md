@@ -49,3 +49,7 @@ An acceptable next candidate requires genuinely new information or a genuinely n
 5. New independent signal families supported by point-in-time data rather than further transformations of the same OHLCV panel.
 
 Until at least one of those inputs exists, the benchmark allocation is the only accepted portfolio in this research: no alpha overlay and no paper trades.
+
+## V6 free-data follow-up
+
+SPY regime, VIX regime, inferred sector-relative features, and an alternate gradient-boosting model were subsequently tested. None improved both validation and walk-forward behavior; gradient boosting materially overfit. A leakage-safe point-in-time interface is ready for future historical market-cap, float, short-interest, borrow, halt, or fundamental data. The final decision is unchanged. See `reports/v6_improvement/ASSESSMENT.md`.
