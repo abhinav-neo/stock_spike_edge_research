@@ -53,3 +53,7 @@ Until at least one of those inputs exists, the benchmark allocation is the only 
 ## V6 free-data follow-up
 
 SPY regime, VIX regime, inferred sector-relative features, and an alternate gradient-boosting model were subsequently tested. None improved both validation and walk-forward behavior; gradient boosting materially overfit. A leakage-safe point-in-time interface is ready for future historical market-cap, float, short-interest, borrow, halt, or fundamental data. The final decision is unchanged. See `reports/v6_improvement/ASSESSMENT.md`.
+
+## Free FINRA short-volume follow-up
+
+Free FINRA daily short-sale volume was integrated with 83.5% exact symbol/event-date coverage. A ratio-only feature modestly improved validation correlation (0.0700 versus 0.0661) and mean yearly walk-forward correlation (0.1611 versus 0.1534), while worsening test correlation and yearly spread. The strict portfolio improved from 21.11% to 22.27% CAGR but contained a -321.70% short loss on allocated notional. FINRA transaction volume is not borrow availability or short interest. The feature is retained for research, but the zero-allocation and no-paper-trading decision is unchanged.
