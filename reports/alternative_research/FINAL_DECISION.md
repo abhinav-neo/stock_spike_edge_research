@@ -61,3 +61,7 @@ Free FINRA daily short-sale volume was integrated with 83.5% exact symbol/event-
 ## Free SEC fails-to-deliver follow-up
 
 All 274 required SEC half-month archives were integrated using conservative publication availability rather than settlement-date hindsight. SEC FTD alone worsened validation correlation and yearly spread. Combining FTD with the FINRA ratio improved test and average walk-forward correlation but did not improve validation and remained below V5 on yearly spread. FTD thresholds also failed to identify the catastrophic SMX short without test-informed tuning. The variants are rejected; accepted allocation remains zero.
+
+## Complete free-data factorial follow-up
+
+The full power set of SPY, VIX, inferred sector, FINRA ratio, and SEC FTD groups was evaluated with random forest and histogram gradient boosting: 32 combinations and 64 validation-only variants. The best random forest improved validation correlation by only 0.0098, below the locked 0.0200 promotion gate. The best gradient-boosting result had a 0.8929 train-validation gap and was rejected as severe overfit. No variant qualified for test or portfolio promotion. Further recombination of these inputs is closed.
