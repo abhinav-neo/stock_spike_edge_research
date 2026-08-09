@@ -10,3 +10,4 @@ matplotlib>=3.9
 tqdm>=4.66
 tenacity>=9.0
 pyyaml>=6.0
+meatpy>=0.5
