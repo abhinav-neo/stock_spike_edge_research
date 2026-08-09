@@ -65,3 +65,7 @@ All 274 required SEC half-month archives were integrated using conservative publ
 ## Complete free-data factorial follow-up
 
 The full power set of SPY, VIX, inferred sector, FINRA ratio, and SEC FTD groups was evaluated with random forest and histogram gradient boosting: 32 combinations and 64 validation-only variants. The best random forest improved validation correlation by only 0.0098, below the locked 0.0200 promotion gate. The best gradient-boosting result had a 0.8929 train-validation gap and was rejected as severe overfit. No variant qualified for test or portfolio promotion. Further recombination of these inputs is closed.
+
+## Causal Markov-regime follow-up
+
+A four-state, online Markov chain based on strictly historical SPY momentum and volatility was evaluated without consulting locked-test outcomes. Markov features reduced random-forest validation correlation from 0.0661 to 0.0636. Histogram gradient boosting improved by only 0.0053 while retaining a 0.9090 train-validation gap. Neither model passed the locked +0.0200 improvement gate. No portfolio run was authorized and the accepted allocation remains zero. See `reports/markov_regime/ASSESSMENT.md`.
