@@ -47,7 +47,8 @@ def test_paginated_quotes_are_normalized_and_authenticated():
     assert len(result) == 2
     assert session.calls[1][1]["page_token"] == "next"
     assert session.headers["APCA-API-KEY-ID"] == "key"
-    assert str(result["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert isinstance(result["timestamp"].dtype, pd.DatetimeTZDtype)
+    assert str(result["timestamp"].dt.tz) == "UTC"
 
 
 def test_regular_session_filter_uses_new_york_time():
