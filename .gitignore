@@ -16,6 +16,7 @@ venv/
 *.log
 data/raw/sec_ftd_archives/
 data/raw/S010303-v2.zip
+data/raw/alpaca_quotes/
 
 # Local notebooks
 .ipynb_checkpoints/
