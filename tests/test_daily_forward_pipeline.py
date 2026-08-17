@@ -12,7 +12,8 @@ def test_forward_pipeline_never_invokes_order_modules() -> None:
         sys.executable, "-B", "-m", "src.daily_market_data_updater", "--end-date", "2026-08-10",
         "--full-existing-universe", "--symbols", "AAA"
     ]
-    assert result[-8] == [sys.executable, "-B", "-m", "src.forward_observation"]
+    assert result[-9] == [sys.executable, "-B", "-m", "src.forward_observation"]
+    assert result[-8] == [sys.executable, "-B", "-m", "src.forward_event_risk"]
     assert result[-1] == [
         sys.executable, "-B", "-m", "src.forward_breakthrough_assessment"
     ]
@@ -33,6 +34,7 @@ def test_forward_pipeline_never_invokes_order_modules() -> None:
 def test_skip_update_runs_observer_only() -> None:
     assert commands("2026-08-10", True, []) == [
         [sys.executable, "-B", "-m", "src.forward_observation"],
+        [sys.executable, "-B", "-m", "src.forward_event_risk"],
         [sys.executable, "-B", "-m", "src.alpaca_operational_snapshot", "--date", "2026-08-10"],
         [sys.executable, "-B", "-m", "src.forward_eligibility"],
         [sys.executable, "-B", "-m", "src.alpaca_locate_evidence"],

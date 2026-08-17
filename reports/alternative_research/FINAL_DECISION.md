@@ -99,3 +99,13 @@ The full power set of SPY, VIX, inferred sector, FINRA ratio, and SEC FTD groups
 ## Causal Markov-regime follow-up
 
 A four-state, online Markov chain based on strictly historical SPY momentum and volatility was evaluated without consulting locked-test outcomes. Markov features reduced random-forest validation correlation from 0.0661 to 0.0636. Histogram gradient boosting improved by only 0.0053 while retaining a 0.9090 train-validation gap. Neither model passed the locked +0.0200 improvement gate. No portfolio run was authorized and the accepted allocation remains zero. See `reports/markov_regime/ASSESSMENT.md`.
+
+## Corporate-action and trading-halt follow-up
+
+Official Alpaca corporate actions and Nasdaq historical halt records were added as an
+independent risk-data coverage study. Historical corporate actions lack a guaranteed
+point-in-time creation timestamp, and validation contains too few recent reverse-split
+examples to select a stable exclusion window. Event-day halts are retained as execution
+risk evidence, not a return-tuned filter. The unattended forward pipeline now timestamps
+both sources on first capture. No historical variant is promoted and accepted allocation
+remains zero. See `reports/event_risk_coverage/ASSESSMENT.md`.

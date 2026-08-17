@@ -1,6 +1,7 @@
 import pandas as pd
 
-from src.alpaca_locate_evidence import broker_etb_evidence
+from src.alpaca_locate_evidence import broker_etb_evidence, unrecorded_evidence
+from src.forward_locate_evidence import append_locate_evidence
 
 
 def test_only_broker_eligible_etb_shorts_receive_established_locate_evidence() -> None:
@@ -16,3 +17,15 @@ def test_only_broker_eligible_etb_shorts_receive_established_locate_evidence() -
     assert result["observation_id"].tolist() == ["a"]
     assert result.loc[result.index[0], "locate_basis"] == "broker_etb"
     assert bool(result.loc[result.index[0], "locate_confirmed"])
+
+
+def test_provider_rerun_can_filter_already_recorded_observations() -> None:
+    existing = pd.DataFrame([{
+        "observation_id": "a", "decision_timestamp": "2026-08-17T00:00:00Z",
+        "provider": "alpaca", "locate_requested": False, "locate_confirmed": True,
+        "quoted_borrow_rate_annual": 0.0, "available_quantity": pd.NA,
+        "source_reference": "alpaca_asset_borrow_status:easy_to_borrow", "locate_basis": "broker_etb",
+    }])
+    additions = unrecorded_evidence(existing, existing)
+    result = append_locate_evidence(existing, additions)
+    assert result["observation_id"].tolist() == ["a"]

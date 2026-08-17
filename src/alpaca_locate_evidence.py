@@ -42,6 +42,13 @@ def broker_etb_evidence(eligibility: pd.DataFrame, snapshots: pd.DataFrame) -> p
     })
 
 
+def unrecorded_evidence(existing: pd.DataFrame, additions: pd.DataFrame) -> pd.DataFrame:
+    if existing.empty or additions.empty:
+        return additions.copy()
+    recorded = set(existing["observation_id"].astype(str))
+    return additions.loc[~additions["observation_id"].astype(str).isin(recorded)].copy()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Record Alpaca-established ETB locate evidence; never requests HTB locates")
     parser.add_argument("--eligibility", default="reports/forward_observation/eligibility.csv")
@@ -54,6 +61,7 @@ def main() -> None:
     output = Path(args.output)
     existing = pd.read_csv(output) if output.exists() and output.stat().st_size else pd.DataFrame()
     additions = broker_etb_evidence(eligibility, snapshots)
+    additions = unrecorded_evidence(existing, additions)
     combined = append_locate_evidence(existing, additions)
     atomic_write_csv(combined, output)
     print(f"Broker-established ETB locate records: {len(combined)}. HTB locate requests were not submitted.")

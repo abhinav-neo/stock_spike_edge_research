@@ -22,6 +22,8 @@ same-evening retries while all pipeline stages remain idempotent.
 - Account controls ready: yes
 - Actual locate decisions required: 18
 - Broker-established ETB locates confirmed: 18
+- Event-risk evidence captured: 24
+- Event-risk captures before entry: 0 (collector deployed after these entries)
 - Integrity gate: passed
 - Statistical gate: not yet passed
 - Operational gate: not yet passed
@@ -46,3 +48,8 @@ The locate gate now consumes a dedicated validated provider ledger rather than a
 snapshot field. `shortable` and `easy_to_borrow` do not count as actual locate evidence.
 Alpaca's current `borrow_status=easy_to_borrow` does count as broker-established ETB
 evidence; no hard-to-borrow locate request or fee was submitted.
+
+The unattended pipeline also records official corporate-action and Nasdaq halt evidence
+on first observation. The original 24 observations are explicitly non-causal because the
+collector was deployed after their entries; they cannot be used for feature promotion.
+Future same-evening captures can qualify as point-in-time evidence.
