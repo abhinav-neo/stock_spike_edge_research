@@ -37,6 +37,52 @@ validation:
     relative_volumes: [1.5, 2, 3, 5, 10]
     minimum_prices: [1, 3, 5, 10, 20]
 
+walk_forward:
+  oos_start: "2020-01-01"
+  test_years: 1
+  minimum_train_years: 5
+  minimum_train_events_per_fold: 30
+  minimum_combined_oos_events: 100
+  minimum_positive_fold_fraction: 0.60
+  fdr_alpha: 0.05
+  short_borrow_bps_annual: 500
+
+dependency_validation:
+  jaccard_similarity_threshold: 0.80
+  bootstrap_samples: 2000
+  random_seed: 42
+  portfolio:
+    initial_capital: 100000
+    position_fraction: 0.05
+    max_concurrent_positions: 10
+    max_daily_entries: 3
+    stop_loss: null
+
+mark_to_market:
+  initial_capital: 100000
+  position_fraction: 0.05
+  stop_loss: 0.40
+  short_borrow_bps_annual: 1000
+  locate_availability_probability: 0.70
+  locate_random_seed: 42
+  candidates:
+    - rule: failed_spike_cl0.40_rv3_px20
+      horizon: 60
+    - rule: failed_spike_cl0.30_rv1.5_px20
+      horizon: 20
+
+mtm_stress_test:
+  borrow_bps_grid: [0, 500, 1000, 2000, 5000]
+  locate_probability_grid: [1.0, 0.8, 0.6, 0.4]
+
+target_return_study:
+  target_cagr: 0.40
+  maximum_acceptable_drawdown: 0.25
+  maximum_gross_exposure: 1.00
+  short_borrow_bps_annual: 1000
+  locate_availability_probability: 0.70
+  position_fraction_grid: [0.02, 0.05, 0.08, 0.10, 0.15, 0.20]
+
 download:
   batch_size: 100
   pause_seconds: 2
