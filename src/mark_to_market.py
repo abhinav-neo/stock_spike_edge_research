@@ -61,11 +61,29 @@ def apply_locate_model(
     return trades.loc[mask].copy(), trades.loc[~mask].copy()
 
 
+def margin_liquidation_price_multiple(initial_margin: float, maintenance_margin: float) -> float:
+    """Return the short-price multiple where position equity reaches maintenance margin.
+
+    The model assumes short-sale proceeds plus the initial margin deposit remain as
+    collateral. It is a position-level stress rule, not a substitute for a broker's
+    account-wide house-margin calculation.
+    """
+    initial = float(initial_margin)
+    maintenance = float(maintenance_margin)
+    if initial < 0:
+        raise ValueError("initial margin must be non-negative")
+    if maintenance < 0:
+        raise ValueError("maintenance margin must be non-negative")
+    return (1.0 + initial) / (1.0 + maintenance)
+
+
 def trade_paths(
     trades: pd.DataFrame,
     prices: pd.DataFrame,
     stop_loss: float | None = None,
     short_borrow_bps_annual: float = 0.0,
+    initial_margin_requirement: float | None = None,
+    maintenance_margin_requirement: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Construct daily paths for short trades with gap-aware stops and borrow cost."""
     validate_prices(prices)
@@ -73,6 +91,13 @@ def trade_paths(
     px["date"] = pd.to_datetime(px["date"])
     px = px.sort_values(["symbol", "date"])
     daily_borrow_rate = float(short_borrow_bps_annual) / 10000.0 / 252.0
+    margin_multiple = None
+    if initial_margin_requirement is not None or maintenance_margin_requirement is not None:
+        if initial_margin_requirement is None or maintenance_margin_requirement is None:
+            raise ValueError("initial and maintenance margin requirements must be supplied together")
+        margin_multiple = margin_liquidation_price_multiple(
+            initial_margin_requirement, maintenance_margin_requirement
+        )
 
     path_rows: list[dict] = []
     trade_rows: list[dict] = []
@@ -94,6 +119,7 @@ def trade_paths(
         mae = 0.0
         mfe = 0.0
         stop_price = entry * (1.0 + float(stop_loss)) if stop_loss is not None else None
+        margin_price = entry * margin_multiple if margin_multiple is not None else None
 
         for day_number, (_, row) in enumerate(after.iterrows(), start=1):
             day_open = float(row["open"])
@@ -107,16 +133,22 @@ def trade_paths(
             mfe = max(mfe, favorable)
 
             stopped = False
+            liquidated = False
             mark_price = day_close
-            if stop_price is not None:
-                if day_open >= stop_price:
+            trigger_prices = [price for price in (stop_price, margin_price) if price is not None]
+            trigger_price = min(trigger_prices) if trigger_prices else None
+            if trigger_price is not None:
+                if day_open >= trigger_price:
                     stopped = True
                     mark_price = day_open
                     stop_fill_type = "gap_open"
-                elif day_high >= stop_price:
+                elif day_high >= trigger_price:
                     stopped = True
-                    mark_price = stop_price
+                    mark_price = trigger_price
                     stop_fill_type = "intraday_stop"
+                liquidated = bool(
+                    stopped and margin_price is not None and margin_price <= (stop_price or float("inf"))
+                )
 
             gross_mark_return = (entry - mark_price) / entry
             accrued_borrow_return = daily_borrow_rate * day_number
@@ -134,7 +166,7 @@ def trade_paths(
             )
 
             if stopped:
-                exit_reason = "stop"
+                exit_reason = "margin_liquidation" if liquidated else "stop"
                 exit_price = mark_price
                 exit_date = row["date"]
                 holding_days = day_number
@@ -159,6 +191,7 @@ def trade_paths(
                 "mfe": mfe,
                 "exit_reason": exit_reason,
                 "stop_fill_type": stop_fill_type,
+                "margin_liquidation_price_multiple": margin_multiple,
             }
         )
 

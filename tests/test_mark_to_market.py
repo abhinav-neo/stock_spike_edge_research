@@ -3,6 +3,7 @@ import pytest
 
 from src.mark_to_market import (
     apply_locate_model,
+    margin_liquidation_price_multiple,
     mark_to_market_portfolio,
     trade_paths,
     validate_prices,
@@ -66,6 +67,31 @@ def test_trade_paths_gap_through_stop_fills_at_open():
     assert completed.iloc[0]["stop_fill_type"] == "gap_open"
     assert completed.iloc[0]["exit_price"] == pytest.approx(16.0)
     assert completed.iloc[0]["net_return"] == pytest.approx(-0.60)
+
+
+def test_margin_liquidation_threshold_and_gap_aware_fill():
+    assert margin_liquidation_price_multiple(0.50, 0.30) == pytest.approx(1.5 / 1.3)
+    prices = sample_prices()
+    prices.loc[1, ["open", "high", "low", "close"]] = [12.0, 12.5, 11.5, 12.0]
+    trades = pd.DataFrame({"symbol": ["ABC"], "event_date": pd.to_datetime(["2024-01-01"]), "horizon": [3]})
+    _, completed = trade_paths(
+        trades,
+        prices,
+        initial_margin_requirement=0.50,
+        maintenance_margin_requirement=0.30,
+    )
+    assert completed.iloc[0]["exit_reason"] == "margin_liquidation"
+    assert completed.iloc[0]["stop_fill_type"] == "gap_open"
+    assert completed.iloc[0]["exit_price"] == pytest.approx(12.0)
+    assert completed.iloc[0]["net_return"] == pytest.approx(-0.20)
+
+
+def test_margin_parameters_must_be_complete_and_non_negative():
+    trades = pd.DataFrame({"symbol": ["ABC"], "event_date": pd.to_datetime(["2024-01-01"]), "horizon": [3]})
+    with pytest.raises(ValueError, match="supplied together"):
+        trade_paths(trades, sample_prices(), initial_margin_requirement=0.50)
+    with pytest.raises(ValueError, match="non-negative"):
+        margin_liquidation_price_multiple(-0.1, 0.30)
 
 
 def test_locate_model_is_reproducible_and_can_reject_trades():

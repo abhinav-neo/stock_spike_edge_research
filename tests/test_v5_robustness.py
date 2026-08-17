@@ -124,3 +124,20 @@ def test_same_symbol_overlap_is_prevented_and_sizing_is_fixed():
     assert trades["symbol"].tolist() == ["AAA", "BBB"]
     assert trades["notional"].tolist() == [10_000.0, 10_000.0]
     assert summary["skipped_due_to_symbol_overlap"] == 1
+
+
+def test_simulation_uses_next_session_entry_date_when_available():
+    evaluation = pd.DataFrame(
+        {
+            "symbol": ["AAA"],
+            "event_date": pd.to_datetime(["2024-01-02"]),
+            "entry_date": pd.to_datetime(["2024-01-03"]),
+            "predicted_return": [-1.0],
+            "actual_return": [-0.10],
+        }
+    )
+    trades, _, _ = simulate(
+        evaluation, "short", 0.0, 0.1, "validation", 5,
+        100_000.0, 10, 0.0, 0.0, True,
+    )
+    assert trades.loc[0, "entry_date"] == pd.Timestamp("2024-01-03")

@@ -36,6 +36,17 @@ This is the proper output of the completed research: the ranking signal exists, 
 - Every nonzero size reduced validation CAGR and Sharpe versus SPY.
 - Validation again selects a 0% overlay.
 
+### Broker margin and forced liquidation
+
+- Position-level broker liquidation was modeled independently of test returns with
+  gap-aware fills under 50%/30%, 100%/50%, and 200%/100% initial/maintenance profiles.
+- The Reg-T-like profile liquidated 32 of 47 located trades and produced -2.39% CAGR.
+- The 100%/50% house profile produced 6.57% CAGR; the 200%/100% hard-to-borrow profile
+  produced 11.64% CAGR. Neither beat aligned SPY or approached the locked 40% target.
+- Forced liquidation bounded the worst modeled trade to roughly -47% to -51%, confirming
+  that realistic broker intervention repairs the impossible -322% hold but destroys much
+  of the apparent edge. See `reports/margin_liquidation/ASSESSMENT.md`.
+
 ## Non-negotiable conclusion
 
 Continuing to tune thresholds, stops, position sizes, or model settings against the inspected 2015-2026 history would manufacture backtest performance. It would not produce new evidence. The current historical dataset has been exhausted for honest model selection.

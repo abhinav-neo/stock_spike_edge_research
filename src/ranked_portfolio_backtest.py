@@ -184,7 +184,9 @@ def simulate(
         open_positions = remaining
 
     for row in candidates.itertuples(index=False):
-        entry_date = pd.Timestamp(row.event_date)
+        entry_date = pd.Timestamp(
+            row.entry_date if hasattr(row, "entry_date") and pd.notna(row.entry_date) else row.event_date
+        )
         close_positions(entry_date)
         open_symbols = {str(position["symbol"]) for position in open_positions}
         if prevent_symbol_overlap and str(row.symbol) in open_symbols:
