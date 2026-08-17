@@ -34,6 +34,15 @@ A strict as-of data interface now supports future market-cap, float, short-inter
 
 No current snapshot was backfilled into history. Doing so would create look-ahead bias. Historical borrow, float, short-interest, halt, options, or fundamentals still require a reliable point-in-time vendor or prospective collection.
 
+The repository now also includes a bulk SEC Company Facts parser for point-in-time shares
+outstanding and derived event-date market capitalization. It uses the SEC filing date—not
+the fiscal period end—as the availability boundary, clears stale facts, and excludes
+multi-ticker CIKs to avoid assigning consolidated shares to the wrong listed class.
+Acquisition could not be completed from the current machine because SEC's access layer
+returned HTTP 403 to both documented bulk and Company Facts endpoints. The parser is
+tested and ready for official `companyfacts.zip` plus `company_tickers.json` inputs when
+the SEC permits access from the execution network.
+
 ## Controlling conclusion
 
 All defensible free-data options are exhausted: richer technical features, SPY regime, VIX regime, inferred sector context, random forests, gradient boosting, stopped shorts, gross-capped overlays, two-sided portfolios, and four generalized alpha families. None passes the complete acceptance gate.
