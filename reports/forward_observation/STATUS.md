@@ -21,7 +21,7 @@ same-evening retries while all pipeline stages remain idempotent.
 - Quote-window coverage rows: 13
 - Account controls ready: yes
 - Actual locate decisions required: 18
-- Actual locate decisions confirmed: 0
+- Broker-established ETB locates confirmed: 18
 - Integrity gate: passed
 - Statistical gate: not yet passed
 - Operational gate: not yet passed
@@ -44,3 +44,5 @@ backfilled, weakened, or bypassed to manufacture a production approval.
 
 The locate gate now consumes a dedicated validated provider ledger rather than an asset
 snapshot field. `shortable` and `easy_to_borrow` do not count as actual locate evidence.
+Alpaca's current `borrow_status=easy_to_borrow` does count as broker-established ETB
+evidence; no hard-to-borrow locate request or fee was submitted.

@@ -19,6 +19,7 @@ def commands(end_date: str, skip_data_update: bool, symbols: list[str]) -> list[
     result.append([sys.executable, "-B", "-m", "src.forward_observation"])
     result.append([sys.executable, "-B", "-m", "src.alpaca_operational_snapshot", "--date", end_date])
     result.append([sys.executable, "-B", "-m", "src.forward_eligibility"])
+    result.append([sys.executable, "-B", "-m", "src.alpaca_locate_evidence"])
     result.append([sys.executable, "-B", "-m", "src.alpaca_account_snapshot", "--date", end_date])
     result.append([sys.executable, "-B", "-m", "src.forward_quote_capture"])
     result.append([sys.executable, "-B", "-m", "src.forward_execution_evaluation"])

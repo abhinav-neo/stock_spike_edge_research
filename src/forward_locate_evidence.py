@@ -11,6 +11,7 @@ from src.atomic_io import atomic_write_csv
 LOCATE_COLUMNS = [
     "observation_id", "decision_timestamp", "provider", "locate_requested", "locate_confirmed",
     "quoted_borrow_rate_annual", "available_quantity", "source_reference",
+    "locate_basis",
 ]
 
 
@@ -30,11 +31,15 @@ def validate_locate_evidence(frame: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Locate evidence requires a named provider")
     for column in ("locate_requested", "locate_confirmed"):
         result[column] = result[column].fillna(False).astype(bool)
-    if (result["locate_confirmed"] & ~result["locate_requested"]).any():
+    allowed_basis = {"explicit_locate", "broker_etb"}
+    if not set(result["locate_basis"].dropna().astype(str)).issubset(allowed_basis):
+        raise ValueError(f"Locate basis must be one of {sorted(allowed_basis)}")
+    explicit = result["locate_basis"].eq("explicit_locate")
+    if (result["locate_confirmed"] & explicit & ~result["locate_requested"]).any():
         raise ValueError("A locate cannot be confirmed when it was not requested")
     for column in ("quoted_borrow_rate_annual", "available_quantity"):
         result[column] = pd.to_numeric(result[column], errors="coerce")
-    if (result["locate_confirmed"] & result["available_quantity"].fillna(0).le(0)).any():
+    if (result["locate_confirmed"] & explicit & result["available_quantity"].fillna(0).le(0)).any():
         raise ValueError("Confirmed locates require positive available quantity")
     if result["quoted_borrow_rate_annual"].dropna().lt(0).any():
         raise ValueError("Quoted borrow rates must be non-negative")

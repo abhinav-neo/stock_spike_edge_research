@@ -184,6 +184,11 @@ Each row must identify the locked observation, decision timestamp, provider, req
 and confirmation flags, quoted annual borrow rate, available quantity, and a redacted
 source reference. Missing, duplicate, or unknown decisions cannot satisfy the gate.
 
+For Alpaca ETB securities, the daily pipeline records the broker-established locate
+basis and zero borrow rate from the current `borrow_status` field. It never submits an
+HTB locate request. HTB signals remain quarantined unless a separately validated
+explicit locate record is supplied.
+
 ## Limitations
 
 - The next-open entry assumption still ignores market impact, spreads, slippage,

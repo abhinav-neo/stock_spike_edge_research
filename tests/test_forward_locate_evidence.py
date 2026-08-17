@@ -14,6 +14,7 @@ def evidence(observation_id: str = "obs-1") -> pd.DataFrame:
         "quoted_borrow_rate_annual": 0.25,
         "available_quantity": 100,
         "source_reference": "redacted-reference",
+        "locate_basis": "explicit_locate",
     }])
 
 

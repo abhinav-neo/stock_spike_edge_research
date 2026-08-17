@@ -12,6 +12,7 @@ from src.forward_quote_capture import observation_id
 ELIGIBILITY_COLUMNS = [
     "observation_id", "signal_date", "symbol", "direction", "broker_metadata_available",
     "tradable", "shortable", "easy_to_borrow", "broker_eligible", "rejection_reason",
+    "borrow_status",
 ]
 
 
@@ -37,6 +38,8 @@ def evaluate_eligibility(ledger: pd.DataFrame, snapshots: pd.DataFrame) -> pd.Da
         tradable = bool(asset["tradable"]) if available and pd.notna(asset["tradable"]) else False
         shortable = bool(asset["shortable"]) if available and pd.notna(asset["shortable"]) else False
         easy = bool(asset["easy_to_borrow"]) if available and pd.notna(asset["easy_to_borrow"]) else False
+        borrow_status = str(asset.get("borrow_status", "")) if available and pd.notna(asset.get("borrow_status")) else ""
+        easy = bool(easy or borrow_status == "easy_to_borrow")
         direction = str(signal["direction"])
         eligible = bool(available and tradable and (direction != "short" or (shortable and easy)))
         if not available:
@@ -53,7 +56,7 @@ def evaluate_eligibility(ledger: pd.DataFrame, snapshots: pd.DataFrame) -> pd.Da
             "observation_id": observation_id(signal), "signal_date": signal_date, "symbol": signal["symbol"],
             "direction": direction, "broker_metadata_available": available, "tradable": tradable,
             "shortable": shortable, "easy_to_borrow": easy, "broker_eligible": eligible,
-            "rejection_reason": reason,
+            "rejection_reason": reason, "borrow_status": borrow_status,
         })
     return pd.DataFrame(rows, columns=ELIGIBILITY_COLUMNS)
 

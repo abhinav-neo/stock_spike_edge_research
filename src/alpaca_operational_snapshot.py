@@ -15,6 +15,7 @@ TRADING_BASE_URL = "https://paper-api.alpaca.markets"
 SNAPSHOT_COLUMNS = [
     "snapshot_date", "signal_date", "symbol", "direction", "asset_id", "asset_status", "tradable",
     "shortable", "easy_to_borrow", "fractionable", "maintenance_margin_requirement",
+    "borrow_status",
 ]
 
 
@@ -48,6 +49,7 @@ def collect_snapshots(ledger: pd.DataFrame, client: AlpacaAssetClient, snapshot_
             "easy_to_borrow": asset.get("easy_to_borrow"),
             "fractionable": asset.get("fractionable"),
             "maintenance_margin_requirement": asset.get("maintenance_margin_requirement"),
+            "borrow_status": asset.get("borrow_status"),
         })
     return pd.DataFrame(rows, columns=SNAPSHOT_COLUMNS)
 
@@ -56,12 +58,18 @@ def append_snapshots(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
     frames = [frame for frame in (existing, new) if not frame.empty]
     if not frames:
         return pd.DataFrame(columns=SNAPSHOT_COLUMNS)
-    return (
-        pd.concat(frames, ignore_index=True, sort=False)
-        .drop_duplicates(["snapshot_date", "signal_date", "symbol", "direction"], keep="first")
-        .sort_values(["snapshot_date", "signal_date", "symbol", "direction"])
-        .reset_index(drop=True)
+    keys = ["snapshot_date", "signal_date", "symbol", "direction"]
+    combined = pd.concat(frames, ignore_index=True, sort=False)
+    for column in SNAPSHOT_COLUMNS:
+        if column not in combined:
+            combined[column] = pd.NA
+    # Preserve the first captured value while allowing a later schema version to
+    # backfill newly introduced fields such as borrow_status on the same date.
+    combined = combined.groupby(keys, as_index=False, sort=False).agg(
+        {column: lambda values: values.dropna().iloc[0] if values.notna().any() else pd.NA
+         for column in SNAPSHOT_COLUMNS if column not in keys}
     )
+    return combined[SNAPSHOT_COLUMNS].sort_values(keys).reset_index(drop=True)
 
 
 def main() -> None:
