@@ -28,9 +28,11 @@ def combined_verdict(
     gates: dict,
     accounts: pd.DataFrame | None = None,
     eligibility: pd.DataFrame | None = None,
+    locates: pd.DataFrame | None = None,
 ) -> dict:
     settled = ledger.loc[ledger["observation_status"].eq("SETTLED")].copy() if len(ledger) else ledger
     eligibility = eligibility if eligibility is not None else pd.DataFrame()
+    locates = locates if locates is not None else pd.DataFrame()
     eligible_ids = set(
         eligibility.loc[eligibility["broker_eligible"].fillna(False).astype(bool), "observation_id"].astype(str)
     ) if len(eligibility) else set()
@@ -50,11 +52,26 @@ def combined_verdict(
     eligibility_ids = set(eligibility["observation_id"].astype(str)) if len(eligibility) else set()
     unknown_eligibility_ids = eligibility_ids - ledger_ids
     rejected_execution_ids = execution_ids - eligible_ids
+    short_ids = set()
+    if len(ledger):
+        from src.forward_quote_capture import observation_id
+        short_ids = {
+            observation_id(row) for _, row in ledger.loc[ledger["direction"].eq("short")].iterrows()
+        }
+    required_locate_ids = eligible_ids & short_ids
+    locate_ids = set(locates["observation_id"].astype(str)) if len(locates) else set()
+    confirmed_locate_ids = set()
+    if len(locates):
+        confirmed_locate_ids = set(
+            locates.loc[locates["locate_confirmed"].fillna(False).astype(bool), "observation_id"].astype(str)
+        )
+    unknown_locate_ids = locate_ids - ledger_ids
     integrity_passed = bool(
         duplicate_observations == 0
         and eligibility_ids == ledger_ids
         and not unknown_eligibility_ids
         and not rejected_execution_ids
+        and not unknown_locate_ids
     )
     execution_coverage = (
         float(len(execution_ids & eligible_settled_ids) / len(eligible_settled_ids)) if eligible_settled_ids else 0.0
@@ -85,9 +102,10 @@ def combined_verdict(
             pd.to_numeric(executions["exit_spread_bps"], errors="coerce"),
         ]).dropna()
     median_spread = float(spread_values.median()) if len(spread_values) else None
-    locate_coverage = 0.0
-    if len(snapshots) and "actual_locate_confirmed" in snapshots:
-        locate_coverage = float(snapshots["actual_locate_confirmed"].fillna(False).astype(bool).mean())
+    locate_coverage = (
+        float(len(required_locate_ids & confirmed_locate_ids) / len(required_locate_ids))
+        if required_locate_ids else 0.0
+    )
 
     minimum_execution = float(gates.get("minimum_execution_coverage", 0.95))
     minimum_snapshot = float(gates.get("minimum_snapshot_coverage", 0.95))
@@ -140,6 +158,9 @@ def combined_verdict(
         "median_touch_spread_bps": median_spread,
         "maximum_median_spread_bps": maximum_spread,
         "actual_locate_coverage": locate_coverage,
+        "actual_locates_required_count": int(len(required_locate_ids)),
+        "actual_locates_confirmed_count": int(len(required_locate_ids & confirmed_locate_ids)),
+        "unknown_locate_decisions": int(len(unknown_locate_ids)),
         "actual_locates_required": require_locates,
         "account_controls_ready": account_ready,
         "operational_gate_passed": operational,
@@ -157,6 +178,7 @@ def main() -> None:
     parser.add_argument("--executions", default="reports/forward_observation/execution_evaluation.csv")
     parser.add_argument("--accounts", default="reports/forward_observation/account_snapshots.csv")
     parser.add_argument("--eligibility", default="reports/forward_observation/eligibility.csv")
+    parser.add_argument("--locates", default="reports/forward_observation/locate_evidence.csv")
     parser.add_argument("--output", default="reports/forward_observation/verdict.json")
     args = parser.parse_args()
 
@@ -179,6 +201,7 @@ def main() -> None:
     result = combined_verdict(
         statistical, ledger, read_csv(Path(args.snapshots)), read_csv(Path(args.executions)), gates,
         read_csv(Path(args.accounts)), eligibility,
+        read_csv(Path(args.locates)),
     )
     output = Path(args.output)
     atomic_write_json(result, output)

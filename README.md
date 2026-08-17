@@ -177,6 +177,13 @@ The workflow deliberately excludes `paper_trade_alpha`, `paper_fill_tracker`, an
 live order-submission path. Forward evidence cannot become a breakthrough until both
 the statistical and operational gates in `config/alpha_factory.yaml` pass.
 
+Actual broker locate decisions are intentionally separate from Alpaca's general
+`shortable` and `easy_to_borrow` asset flags. Provider exports can be validated and
+appended with `python -m src.forward_locate_evidence --input <provider-export.csv>`.
+Each row must identify the locked observation, decision timestamp, provider, request
+and confirmation flags, quoted annual borrow rate, available quantity, and a redacted
+source reference. Missing, duplicate, or unknown decisions cannot satisfy the gate.
+
 ## Limitations
 
 - The next-open entry assumption still ignores market impact, spreads, slippage,

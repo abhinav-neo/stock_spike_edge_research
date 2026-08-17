@@ -20,6 +20,8 @@ same-evening retries while all pipeline stages remain idempotent.
 - Broker-eligible observations: 18
 - Quote-window coverage rows: 13
 - Account controls ready: yes
+- Actual locate decisions required: 18
+- Actual locate decisions confirmed: 0
 - Integrity gate: passed
 - Statistical gate: not yet passed
 - Operational gate: not yet passed
@@ -39,3 +41,6 @@ spreads, actual locate evidence, and healthy paper-account controls.
 
 These are elapsed forward-evidence requirements, not missing software. They must not be
 backfilled, weakened, or bypassed to manufacture a production approval.
+
+The locate gate now consumes a dedicated validated provider ledger rather than an asset
+snapshot field. `shortable` and `easy_to_borrow` do not count as actual locate evidence.
