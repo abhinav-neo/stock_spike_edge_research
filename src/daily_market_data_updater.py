@@ -1,13 +1,37 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from itertools import islice
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yfinance as yf
 
+from src.atomic_io import atomic_write_parquet
+
 PRICE_COLUMNS = ["symbol", "date", "open", "high", "low", "close", "adj_close", "volume"]
+
+
+def latest_weekday(value: date) -> date:
+    """Return the latest possible U.S. trading date without a calendar dependency."""
+    while value.weekday() >= 5:
+        value -= timedelta(days=1)
+    return value
+
+
+def latest_completed_session(value: date, now: datetime | None = None) -> date:
+    """Avoid requesting a daily bar before the provider can reasonably publish it."""
+    eastern_now = now or datetime.now(ZoneInfo("America/New_York"))
+    if eastern_now.tzinfo is None:
+        eastern_now = eastern_now.replace(tzinfo=ZoneInfo("America/New_York"))
+    else:
+        eastern_now = eastern_now.astimezone(ZoneInfo("America/New_York"))
+    candidate = min(value, eastern_now.date())
+    if candidate == eastern_now.date() and eastern_now.time() < time(18, 0):
+        candidate -= timedelta(days=1)
+    return latest_weekday(candidate)
 
 
 def normalize_download(raw: pd.DataFrame, symbol: str) -> pd.DataFrame:
@@ -51,7 +75,9 @@ def merge_prices(existing: pd.DataFrame, updates: pd.DataFrame) -> pd.DataFrame:
             .reset_index(drop=True))
 
 
-def discover_symbols(existing: pd.DataFrame, orders_path: Path, explicit: list[str]) -> list[str]:
+def discover_symbols(
+    existing: pd.DataFrame, orders_path: Path, explicit: list[str], full_existing_universe: bool = False
+) -> list[str]:
     symbols = {value.upper() for value in explicit if value.strip()}
     if orders_path.exists() and orders_path.stat().st_size:
         try:
@@ -60,38 +86,100 @@ def discover_symbols(existing: pd.DataFrame, orders_path: Path, explicit: list[s
                 symbols.update(orders["symbol"].dropna().astype(str).str.upper())
         except pd.errors.EmptyDataError:
             pass
-    if not symbols and not existing.empty and "symbol" in existing.columns:
+    if (full_existing_universe or not symbols) and not existing.empty and "symbol" in existing.columns:
         symbols.update(existing["symbol"].dropna().astype(str).str.upper())
     return sorted(symbols)
 
 
-def update_market_data(output_path: Path, orders_path: Path, explicit_symbols: list[str], end_date: date) -> dict:
+def batches(values: list[str], size: int) -> list[list[str]]:
+    if size < 1:
+        raise ValueError("batch size must be positive")
+    iterator = iter(values)
+    result = []
+    while chunk := list(islice(iterator, size)):
+        result.append(chunk)
+    return result
+
+
+def download_batch(
+    symbols: list[str], starts: dict[str, date], end_date: date, timeout: float = 5.0
+) -> tuple[list[pd.DataFrame], list[str]]:
+    start = min(starts[symbol] for symbol in symbols)
+    tickers: str | list[str] = symbols[0] if len(symbols) == 1 else symbols
+    raw = yf.download(
+        tickers, start=start.isoformat(), end=(end_date + timedelta(days=1)).isoformat(),
+        auto_adjust=False, progress=False, threads=len(symbols) > 1, group_by="column",
+        timeout=timeout,
+    )
+    downloaded: list[pd.DataFrame] = []
+    no_data: list[str] = []
+    for symbol in symbols:
+        normalized = normalize_download(raw, symbol)
+        normalized = normalized.loc[normalized["date"].dt.date.ge(starts[symbol])]
+        if normalized.empty:
+            no_data.append(symbol)
+        else:
+            downloaded.append(normalized)
+    return downloaded, no_data
+
+
+def update_market_data(
+    output_path: Path,
+    orders_path: Path,
+    explicit_symbols: list[str],
+    end_date: date,
+    batch_size: int = 100,
+    full_existing_universe: bool = False,
+    download_timeout: float = 5.0,
+) -> dict:
+    if download_timeout <= 0:
+        raise ValueError("download timeout must be positive")
+    requested_end_date = end_date
+    end_date = latest_completed_session(end_date)
     existing = pd.read_parquet(output_path) if output_path.exists() else pd.DataFrame(columns=PRICE_COLUMNS)
-    symbols = discover_symbols(existing, orders_path, explicit_symbols)
+    symbols = discover_symbols(existing, orders_path, explicit_symbols, full_existing_universe)
     if not symbols:
         raise ValueError("No symbols found. Provide --symbols or create paper orders first.")
 
     downloaded: list[pd.DataFrame] = []
     failures: list[str] = []
+    no_data: list[str] = []
+    starts: dict[str, date] = {}
+    latest_dates: dict[str, date] = {}
+    if not existing.empty:
+        dated = existing[["symbol", "date"]].copy()
+        dated["symbol"] = dated["symbol"].astype(str).str.upper()
+        dated["date"] = pd.to_datetime(dated["date"], errors="coerce")
+        maxima = dated.dropna(subset=["date"]).groupby("symbol", sort=False)["date"].max()
+        latest_dates = {symbol: timestamp.date() for symbol, timestamp in maxima.items()}
     for symbol in symbols:
-        symbol_rows = existing[existing["symbol"].astype(str).str.upper().eq(symbol)] if not existing.empty else pd.DataFrame()
-        start = (pd.to_datetime(symbol_rows["date"]).max().date() + timedelta(days=1)) if not symbol_rows.empty else end_date - timedelta(days=10)
-        if start > end_date:
-            continue
+        last_date = latest_dates.get(symbol)
+        start = last_date + timedelta(days=1) if last_date else end_date - timedelta(days=10)
+        if start <= end_date:
+            starts[symbol] = start
+
+    for chunk in batches(sorted(starts), batch_size):
         try:
-            raw = yf.download(symbol, start=start.isoformat(), end=(end_date + timedelta(days=1)).isoformat(),
-                              auto_adjust=False, progress=False, threads=False)
-            normalized = normalize_download(raw, symbol)
-            if not normalized.empty:
-                downloaded.append(normalized)
+            frames, empty = download_batch(chunk, starts, end_date, download_timeout)
+            downloaded.extend(frames)
+            no_data.extend(empty)
         except Exception:
-            failures.append(symbol)
+            for symbol in chunk:
+                try:
+                    frames, empty = download_batch([symbol], starts, end_date, download_timeout)
+                    downloaded.extend(frames)
+                    no_data.extend(empty)
+                except Exception:
+                    failures.append(symbol)
 
     updates = pd.concat(downloaded, ignore_index=True) if downloaded else pd.DataFrame(columns=PRICE_COLUMNS)
     merged = merge_prices(existing, updates)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    merged.to_parquet(output_path, index=False)
-    return {"symbols": len(symbols), "new_rows": len(updates), "total_rows": len(merged), "failed_symbols": failures}
+    atomic_write_parquet(merged, output_path)
+    return {
+        "symbols": len(symbols), "new_rows": len(updates), "total_rows": len(merged),
+        "requested_end_date": str(requested_end_date), "effective_end_date": str(end_date),
+        "failed_symbols": failures, "no_data_symbols": no_data,
+    }
 
 
 def main() -> None:
@@ -100,10 +188,21 @@ def main() -> None:
     parser.add_argument("--orders", default="reports/paper/paper_order_blotter.csv")
     parser.add_argument("--symbols", nargs="*", default=[])
     parser.add_argument("--end-date", default=date.today().isoformat())
+    parser.add_argument("--batch-size", type=int, default=100)
+    parser.add_argument("--download-timeout", type=float, default=5.0)
+    parser.add_argument("--full-existing-universe", action="store_true")
     args = parser.parse_args()
 
-    summary = update_market_data(Path(args.output), Path(args.orders), args.symbols, date.fromisoformat(args.end_date))
-    print(pd.DataFrame([{**summary, "failed_symbols": ",".join(summary["failed_symbols"])}]).to_string(index=False))
+    summary = update_market_data(
+        Path(args.output), Path(args.orders), args.symbols, date.fromisoformat(args.end_date), args.batch_size,
+        args.full_existing_universe, args.download_timeout,
+    )
+    printable = {
+        **summary,
+        "failed_symbols": ",".join(summary["failed_symbols"]),
+        "no_data_symbols": ",".join(summary["no_data_symbols"]),
+    }
+    print(pd.DataFrame([printable]).to_string(index=False))
 
 
 if __name__ == "__main__":

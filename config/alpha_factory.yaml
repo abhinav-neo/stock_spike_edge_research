@@ -76,3 +76,18 @@ paper_trading:
   paper_fill_slippage_bps: 5.0
   paper_exit_slippage_bps: 5.0
   live_submission_enabled: false
+
+forward_observation:
+  start_date: "2026-08-10"
+  gates:
+    minimum_settled_observations: 100
+    minimum_independent_signal_dates: 60
+    minimum_calendar_span_days: 180
+    minimum_positive_candidate_fraction: 0.75
+  operational_gates:
+    minimum_execution_coverage: 0.95
+    minimum_snapshot_coverage: 0.95
+    minimum_shortable_fraction: 1.0
+    minimum_easy_to_borrow_fraction: 0.95
+    maximum_median_spread_bps: 50.0
+    require_actual_locates: true

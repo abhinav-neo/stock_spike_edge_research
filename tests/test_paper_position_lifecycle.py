@@ -10,8 +10,12 @@ def fill(direction="long", stop=75.0, horizon=2):
 
 
 def bars(rows):
-    return pd.DataFrame([{"symbol": "AAA", "date": pd.Timestamp(date), "open": o, "high": h, "low": l, "close": c}
-                         for date, o, h, l, c in rows])
+    return pd.DataFrame(
+        [
+            {"symbol": "AAA", "date": pd.Timestamp(date), "open": open_, "high": high, "low": low, "close": close}
+            for date, open_, high, low, close in rows
+        ]
+    )
 
 
 def test_long_gap_stop_uses_open() -> None:

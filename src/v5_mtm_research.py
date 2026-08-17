@@ -143,7 +143,6 @@ def performance(equity: pd.DataFrame, spy: pd.DataFrame, initial_capital: float)
     covariance = strategy_returns.cov(benchmark_returns)
     variance = benchmark_returns.var(ddof=1)
     years = max((aligned["date"].iloc[-1] - aligned["date"].iloc[0]).days / 365.25, 1 / 365.25)
-    final_equity = float(aligned["equity"].iloc[-1])
     ending_realized = float(equity["equity"].iloc[-1])
     daily_std = float(strategy_returns.std(ddof=1))
     summary = {

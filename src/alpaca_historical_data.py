@@ -73,7 +73,7 @@ class AlpacaHistoricalClient:
             if token:
                 params["page_token"] = token
             payload = self._get(f"/v2/stocks/{symbol}/quotes", params)
-            for quote in payload.get("quotes", []):
+            for quote in payload.get("quotes") or []:
                 rows.append(
                     {
                         "symbol": symbol,
@@ -94,10 +94,19 @@ class AlpacaHistoricalClient:
         if not rows:
             return pd.DataFrame(columns=["symbol", "timestamp", "bid", "ask", "bid_size", "ask_size"])
         frame = pd.DataFrame(rows)
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True, format="mixed", errors="coerce")
+        numeric = ["bid", "ask", "bid_size", "ask_size"]
+        frame[numeric] = frame[numeric].apply(pd.to_numeric, errors="coerce")
+        valid = frame["timestamp"].notna() & frame[numeric].notna().all(axis=1)
+        valid &= frame["bid"].gt(0) & frame["ask"].gt(0)
+        valid &= frame["bid_size"].ge(0) & frame["ask_size"].ge(0)
+        valid &= frame["ask"].ge(frame["bid"])
+        frame = frame.loc[valid].copy()
+        if frame.empty:
+            return pd.DataFrame(columns=["symbol", "timestamp", "bid", "ask", "bid_size", "ask_size"])
+        frame = frame.drop_duplicates(["symbol", "timestamp"], keep="last")
         validated = validate_quotes(frame[["symbol", "timestamp", "bid", "ask", "bid_size", "ask_size"]])
         extras = frame.drop(columns=["bid", "ask", "bid_size", "ask_size"]).copy()
-        extras["timestamp"] = pd.to_datetime(extras["timestamp"], utc=True)
-        extras = extras.drop_duplicates(["symbol", "timestamp"], keep="last")
         return validated.merge(extras, on=["symbol", "timestamp"], how="left", validate="one_to_one")
 
 
@@ -141,13 +150,21 @@ def download_partitions(
     for symbol in symbols:
         for day in pd.date_range(pd.Timestamp(start).normalize(), pd.Timestamp(end).normalize(), freq="D", inclusive="left"):
             next_day = day + pd.Timedelta(days=1)
-            quotes = regular_session_quotes(client.quotes(symbol, day, next_day, feed=feed))
-            if quotes.empty:
-                continue
             target = output / f"symbol={symbol}" / f"date={day.date()}" / "quotes.parquet"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            quotes.to_parquet(target, index=False)
+            if target.exists():
+                quotes = validate_quotes(pd.read_parquet(target))
+                status = "reused"
+            else:
+                quotes = regular_session_quotes(client.quotes(symbol, day, next_day, feed=feed))
+                status = "downloaded"
+            if quotes.empty:
+                print(f"{symbol} {day.date()} empty", flush=True)
+                continue
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                quotes.to_parquet(target, index=False)
             summaries.append({"symbol": symbol, "date": str(day.date()), **coverage_metrics(quotes)})
+            print(f"{symbol} {day.date()} {status} {len(quotes):,} quotes", flush=True)
     return pd.DataFrame(summaries)
 
 

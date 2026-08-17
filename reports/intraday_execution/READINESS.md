@@ -2,10 +2,25 @@
 
 ## Current status
 
-The repository now has a quote-level execution kernel for a $10,000 account, but it
-does not contain intraday quotes/trades and no market-data credential is configured.
-Consequently, no high-frequency return, CAGR, drawdown, or trade-frequency claim can
-yet be measured honestly.
+The repository now has a quote-level execution kernel for a $10,000 account and a
+validated Alpaca IEX historical-quote ingestion path. Four SPY sessions are stored as
+partitioned Parquet, including a three-session resumability trial, but the repository
+still lacks the multi-year, survivorship-free quote/trade history needed for an honest
+high-frequency return, CAGR, drawdown, or trade-frequency claim.
+
+## Alpaca ingestion pilot
+
+An authenticated IEX-feed pilot for SPY on 2025-01-02 downloaded 1,526,592
+regular-session quotes. Coverage checks found zero crossed quotes and zero zero-size
+quotes; median quoted spread was 3.95 bps and the 95th percentile was 8.85 bps. The
+coverage summary is in `reports/intraday_execution/alpaca_pilot_coverage.csv`, and the
+partition is under `data/raw/alpaca_quotes_pilot/`.
+
+A resumability trial then acquired 3,251,611 SPY quotes across January 2-4, 2024.
+The trial safely reused two completed partitions after an interrupted run and resumed
+with the missing day. All three sessions had zero crossed and zero zero-size quotes.
+Its coverage summary is in `reports/intraday_execution/alpaca_2024_three_sessions.csv`, and
+the partitions are under `data/raw/alpaca_quotes/`.
 
 ## Required point-in-time inputs
 

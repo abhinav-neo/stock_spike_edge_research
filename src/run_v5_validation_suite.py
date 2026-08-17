@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.ranked_portfolio_backtest import join_feature_data
 from src.train_predictive_model import select_features, target_horizon
 
 

@@ -102,7 +102,9 @@ def apply_capacity(trades: pd.DataFrame, max_daily_entries: int, max_concurrent:
         elif len(active_exits) >= max_concurrent:
             reason = "concurrency_cap"
         if reason:
-            item = trade.to_dict(); item["rejection_reason"] = reason; rejected.append(item)
+            item = trade.to_dict()
+            item["rejection_reason"] = reason
+            rejected.append(item)
         else:
             accepted.append(trade.to_dict())
             active_exits.append(pd.Timestamp(trade["scheduled_exit_date"]))
@@ -123,14 +125,18 @@ def execute_trade(trade: pd.Series, prices: pd.DataFrame, stop_loss: float | Non
         for _, bar in symbol_prices.iterrows():
             if direction == "long":
                 if float(bar["open"]) <= stop:
-                    exit_price, exit_date, exit_reason, stop_fill_type = float(bar["open"]), bar["date"], "stop", "gap_open"; break
+                    exit_price, exit_date, exit_reason, stop_fill_type = float(bar["open"]), bar["date"], "stop", "gap_open"
+                    break
                 if float(bar["low"]) <= stop:
-                    exit_price, exit_date, exit_reason, stop_fill_type = stop, bar["date"], "stop", "intraday"; break
+                    exit_price, exit_date, exit_reason, stop_fill_type = stop, bar["date"], "stop", "intraday"
+                    break
             else:
                 if float(bar["open"]) >= stop:
-                    exit_price, exit_date, exit_reason, stop_fill_type = float(bar["open"]), bar["date"], "stop", "gap_open"; break
+                    exit_price, exit_date, exit_reason, stop_fill_type = float(bar["open"]), bar["date"], "stop", "gap_open"
+                    break
                 if float(bar["high"]) >= stop:
-                    exit_price, exit_date, exit_reason, stop_fill_type = stop, bar["date"], "stop", "intraday"; break
+                    exit_price, exit_date, exit_reason, stop_fill_type = stop, bar["date"], "stop", "intraday"
+                    break
     gross = exit_price / entry - 1.0
     if direction == "short":
         gross = -gross
@@ -173,7 +179,8 @@ def main() -> None:
     root = yaml.safe_load(Path(args.config).read_text())
     factory_cfg = root.get("alpha_factory", {})
     portfolio_cfg = root.get("alpha_portfolio", {})
-    output = Path(args.output_dir); output.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output_dir)
+    output.mkdir(parents=True, exist_ok=True)
     survivors_path = Path(args.survivors)
     if not survivors_path.exists():
         raise FileNotFoundError(f"Run python -B -m src.validate_alpha_factory first; missing {survivors_path}")
@@ -185,7 +192,8 @@ def main() -> None:
         print("Locked-test survivors: 0\nPortfolio simulation skipped.\nProduction-approved candidates: 0")
         return
 
-    prices = pd.read_parquet(args.prices); prices["date"] = pd.to_datetime(prices["date"])
+    prices = pd.read_parquet(args.prices)
+    prices["date"] = pd.to_datetime(prices["date"])
     features = build_features(prices)
     trades = build_trades(features, selected, factory_cfg, root.get("validation", {}).get("test_start", "2023-01-01"))
     accepted, rejected = apply_capacity(trades, int(portfolio_cfg.get("max_daily_entries", 3)), int(portfolio_cfg.get("max_concurrent_positions", 10)))

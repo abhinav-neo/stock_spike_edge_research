@@ -148,6 +148,35 @@ To run the unit tests:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+## Zero-capital forward observation
+
+The historical candidate search is closed. The accepted alpha allocation is zero, and
+the forward workflow records observations and execution feasibility without submitting
+orders. Run it after the U.S. market close with Alpaca credentials available in the
+process environment:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m src.daily_forward_pipeline --end-date YYYY-MM-DD
+```
+
+For an unattended Windows run, invoke
+`scripts\run_daily_forward_observation.ps1` from Task Scheduler after market close.
+The script appends output to `reports\forward_observation\scheduled_run.log` and returns
+a failing exit code when any pipeline stage fails. Re-running a date is safe: market
+data is merged by symbol/date, signals are deduplicated by their locked identity, and
+state files are replaced atomically.
+
+The market-data updater scales by grouping the existing universe once, downloads stale
+symbols in batches, retries failed batches by symbol, and bounds provider requests. It
+also rolls an in-progress U.S. session back to the latest completed weekday, using an
+18:00 America/New_York availability cutoff, so a premarket or intraday scheduled run
+cannot ingest an incomplete daily bar. Exchange holidays may still appear in the
+reported `no_data_symbols` list and are retried safely on the next run.
+
+The workflow deliberately excludes `paper_trade_alpha`, `paper_fill_tracker`, and every
+live order-submission path. Forward evidence cannot become a breakthrough until both
+the statistical and operational gates in `config/alpha_factory.yaml` pass.
+
 ## Limitations
 
 - The next-open entry assumption still ignores market impact, spreads, slippage,
