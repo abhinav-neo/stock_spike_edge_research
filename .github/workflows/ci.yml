@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, v5-feature-engineering]
+    branches: [main]
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt ruff pytest
+          python -m pip install -r requirements.txt pytest ruff==0.15.20
       - name: Lint
         run: python -m ruff check src tests
       - name: Test
