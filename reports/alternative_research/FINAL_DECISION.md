@@ -47,6 +47,18 @@ This is the proper output of the completed research: the ranking signal exists, 
   that realistic broker intervention repairs the impossible -322% hold but destroys much
   of the apparent edge. See `reports/margin_liquidation/ASSESSMENT.md`.
 
+### Bounded-loss put spreads
+
+- Alpaca historical options data begins in February 2024, covering only 58 of the 73
+  locked strict candidates.
+- Only 7 of those 58 candidates (12.1%) had at least one 14-45 DTE expiration and two
+  put strikes, the minimum topology for a vertical spread.
+- The provider exposes historical option trades and bars but not historical bid/ask
+  quotes; the free feed is indicative rather than actual OPRA.
+- Entry debit, exit credit, spread, slippage, and fill feasibility therefore cannot be
+  reconstructed honestly. The bounded-loss path is rejected without fitting returns to
+  the seven optionable test events. See `reports/options_coverage/ASSESSMENT.md`.
+
 ## Non-negotiable conclusion
 
 Continuing to tune thresholds, stops, position sizes, or model settings against the inspected 2015-2026 history would manufacture backtest performance. It would not produce new evidence. The current historical dataset has been exhausted for honest model selection.
