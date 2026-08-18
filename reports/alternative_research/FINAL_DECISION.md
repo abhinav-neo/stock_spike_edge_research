@@ -109,3 +109,17 @@ examples to select a stable exclusion window. Event-day halts are retained as ex
 risk evidence, not a return-tuned filter. The unattended forward pipeline now timestamps
 both sources on first capture. No historical variant is promoted and accepted allocation
 remains zero. See `reports/event_risk_coverage/ASSESSMENT.md`.
+
+The fixed rule excluding all event-day halts was then gated on validation sample size
+before any test-period return calculation. It retained only 17 of 31 validation
+candidates, below the locked minimum of 30. Test CAGR evaluation was therefore not
+authorized. See `reports/halt_exclusion/ASSESSMENT.md`.
+
+## FINRA consolidated short-interest follow-up
+
+The official public FINRA API returned 9,299 semi-monthly records for the candidate
+symbols. A conservative 14-calendar-day publication lag and 45-day staleness cap yielded
+coverage for only 20 of 31 validation candidates, below the locked minimum of 30. No
+short-interest threshold or test-period return was evaluated. The path remains available
+for prospective collection but is rejected for historical promotion. See
+`reports/finra_short_interest/ASSESSMENT.md`.

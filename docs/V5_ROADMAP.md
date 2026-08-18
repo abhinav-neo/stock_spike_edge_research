@@ -60,7 +60,8 @@ A model should not advance merely because one metric is positive. At minimum it 
 | Free SPY/VIX/sector/FINRA/SEC/Markov variants | Complete | None passed the locked validation-improvement gate. |
 | Point-in-time SEC fundamentals interface | Implemented, source blocked | SEC endpoint returns HTTP 403 from this host; no fabricated backfill. |
 | Bounded-loss option-spread path | Complete, rejected | Only 7/58 in-window events were constructible; historical quotes unavailable. |
-| Corporate-action and halt evidence | Historical coverage complete; prospective capture active | 50/104 candidates halted on event day; no leakage-safe historical filter selected. |
+| Corporate-action and halt evidence | Historical coverage complete; prospective capture active | Fixed halt exclusion retained 17 validation events versus 30 required; test evaluation rejected. |
+| Consolidated short interest | Collector complete; historical promotion rejected | Point-in-time coverage retained 20 validation events versus 30 required. |
 | Broker eligibility and locate evidence | Operational | 18/18 required ETB locates confirmed; six signals rejected. |
 | Forward execution/statistical validation | Collecting | 0/100 settled, 0/60 dates, 0/180 days; allocation remains 0%. |
 
