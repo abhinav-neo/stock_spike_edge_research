@@ -123,3 +123,21 @@ coverage for only 20 of 31 validation candidates, below the locked minimum of 30
 short-interest threshold or test-period return was evaluated. The path remains available
 for prospective collection but is rejected for historical promotion. See
 `reports/finra_short_interest/ASSESSMENT.md`.
+
+## Point-in-time news follow-up
+
+Alpaca/Benzinga news was collected only for the 2015-2022 train and validation events.
+Validation event-news coverage was 69.9%. A fixed article-topology group, six fixed
+semantic categories, and their combined feature set were evaluated with both existing
+model families. The best validation improvement was only +0.0024 versus the locked
++0.0200 gate. Test news was not collected and no test return was evaluated. See
+`reports/alpaca_news_research/ASSESSMENT.md`.
+
+## Point-in-time intraday follow-up
+
+SIP minute bars were collected only for the 2015-2022 train and validation events, with
+78.3% validation coverage of at least 30 event-day bars. Path, volume, gap, and combined
+feature groups were evaluated. The best path-only variant improved validation correlation
+by +0.0059, below the locked +0.0200 gate; combined intraday features worsened it. Test
+minute bars were not collected and no test return was evaluated. See
+`reports/alpaca_intraday_research/ASSESSMENT.md`.

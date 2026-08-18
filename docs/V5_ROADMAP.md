@@ -62,6 +62,8 @@ A model should not advance merely because one metric is positive. At minimum it 
 | Bounded-loss option-spread path | Complete, rejected | Only 7/58 in-window events were constructible; historical quotes unavailable. |
 | Corporate-action and halt evidence | Historical coverage complete; prospective capture active | Fixed halt exclusion retained 17 validation events versus 30 required; test evaluation rejected. |
 | Consolidated short interest | Collector complete; historical promotion rejected | Point-in-time coverage retained 20 validation events versus 30 required. |
+| Point-in-time event news | Complete, rejected before test | Best validation improvement +0.0024 versus +0.0200 required. |
+| SIP intraday event structure | Complete, rejected before test | Best validation improvement +0.0059 versus +0.0200 required. |
 | Broker eligibility and locate evidence | Operational | 18/18 required ETB locates confirmed; six signals rejected. |
 | Forward execution/statistical validation | Collecting | 0/100 settled, 0/60 dates, 0/180 days; allocation remains 0%. |
 
