@@ -7,6 +7,7 @@ from src.forward_observation import (
     LEDGER_COLUMNS,
     append_signals,
     enforce_model_lock,
+    estimated_open_exit_dates,
     evaluate_evidence,
     model_fingerprint,
     settle_observations,
@@ -125,3 +126,17 @@ def test_evidence_gate_rejects_short_or_empty_samples() -> None:
         "signal_date": "2026-08-10", "candidate_key": "a", "observation_status": "SETTLED", "net_return": 0.5
     }])
     assert evaluate_evidence(short, {})["statistical_gate_passed"] is False
+
+
+def test_estimated_exit_dates_use_horizon_sessions() -> None:
+    ledger = pd.DataFrame([
+        {
+            "signal_date": "2026-08-10", "entry_date": "2026-08-11", "horizon": 10,
+            "observation_status": "OPEN",
+        },
+        {
+            "signal_date": "2026-08-17", "entry_date": pd.NA, "horizon": 10,
+            "observation_status": "OPEN",
+        },
+    ])
+    assert estimated_open_exit_dates(ledger) == ("2026-08-24", "2026-08-31")

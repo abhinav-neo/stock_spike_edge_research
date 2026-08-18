@@ -156,6 +156,22 @@ def evaluate_evidence(ledger: pd.DataFrame, gates: dict) -> dict:
     return result
 
 
+def estimated_open_exit_dates(ledger: pd.DataFrame) -> tuple[str | None, str | None]:
+    if ledger.empty:
+        return None, None
+    estimates = []
+    for _, row in ledger.loc[ledger["observation_status"].eq("OPEN")].iterrows():
+        entry_value = row.get("entry_date")
+        if pd.notna(entry_value) and str(entry_value).strip():
+            entry_date = pd.Timestamp(entry_value).normalize()
+        else:
+            entry_date = pd.Timestamp(row["signal_date"]).normalize() + pd.offsets.BDay(1)
+        estimates.append(entry_date + pd.offsets.BDay(int(row["horizon"]) - 1))
+    if not estimates:
+        return None, None
+    return str(min(estimates).date()), str(max(estimates).date())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Record zero-capital forward observations; never creates orders.")
     parser.add_argument("--config", default="config/alpha_factory.yaml")
@@ -191,12 +207,15 @@ def main() -> None:
     assessment_path = Path(args.assessment)
     atomic_write_json(assessment, assessment_path)
 
+    earliest_exit, latest_exit = estimated_open_exit_dates(ledger)
     manifest = {
         "data_cutoff": str(prices["date"].max().date()),
         "observation_start": str(observation_start.date()),
         "observations": int(len(ledger)),
         "open": int(ledger["observation_status"].eq("OPEN").sum()) if len(ledger) else 0,
         "settled": int(ledger["observation_status"].eq("SETTLED").sum()) if len(ledger) else 0,
+        "estimated_earliest_open_exit_date": earliest_exit,
+        "estimated_latest_open_exit_date": latest_exit,
         "allocation_fraction": 0.0,
         "orders_enabled": False,
         "model_locked": True,
