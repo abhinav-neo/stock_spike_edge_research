@@ -1,6 +1,7 @@
 # Python artifacts
 __pycache__/
 .pytest_cache/
+.tmp/
 *.py[cod]
 *.pyo
 *.pyd
@@ -14,6 +15,9 @@ venv/
 *.csv
 *.json
 *.log
+data/raw/sec_ftd_archives/
+data/raw/S010303-v2.zip
+data/raw/alpaca_quotes/
 
 # Local notebooks
 .ipynb_checkpoints/

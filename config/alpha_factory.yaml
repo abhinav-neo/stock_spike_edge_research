@@ -1,0 +1,111 @@
+alpha_factory:
+  minimum_price: 3.0
+  minimum_avg_dollar_volume: 2000000
+  minimum_events: 100
+  minimum_t_stat: 2.0
+  round_trip_cost_bps: 100
+  top_n: 50
+
+  families:
+    gap_fade:
+      gap_thresholds: [0.05, 0.10, 0.20]
+      relative_volumes: [1.5, 3.0, 5.0]
+      close_locations: [0.20, 0.35, 0.65, 0.80]
+      horizons: [1, 2, 5, 10]
+
+    momentum:
+      return_thresholds: [0.05, 0.10, 0.20]
+      relative_volumes: [1.5, 3.0, 5.0]
+      ma20_distances: [0.03, 0.05, 0.10]
+      horizons: [5, 10, 20, 40]
+
+    mean_reversion:
+      ma20_distances: [0.05, 0.10, 0.20, 0.30]
+      relative_volumes: [1.0, 1.5, 3.0]
+      horizons: [2, 5, 10, 20]
+
+    breakout:
+      breakout_thresholds: [0.0, 0.02, 0.05]
+      relative_volumes: [1.5, 3.0, 5.0]
+      horizons: [5, 10, 20, 40]
+
+validation:
+  train_end: "2019-12-31"
+  validation_start: "2020-01-01"
+  validation_end: "2022-12-31"
+  test_start: "2023-01-01"
+  fdr_alpha: 0.05
+  minimum_train_events: 100
+  minimum_validation_events: 30
+  minimum_test_events: 30
+  minimum_positive_year_fraction: 0.60
+
+alpha_portfolio:
+  initial_capital: 100000
+  position_fraction: 0.05
+  maximum_candidates: 12
+  maximum_per_family_direction: 2
+  max_daily_entries: 3
+  max_concurrent_positions: 10
+  stop_loss: 0.25
+  round_trip_cost_bps: 100
+  target_cagr: 0.40
+  maximum_acceptable_drawdown: 0.25
+
+gap_fade_controlled:
+  initial_capital: 100000
+  position_fraction: 0.02
+  maximum_candidates: 2
+  max_daily_entries: 2
+  max_concurrent_positions: 6
+  stop_loss: 0.20
+  round_trip_cost_bps: 100
+  minimum_entry_price: 5.0
+  maximum_entry_price: 1000.0
+  minimum_avg_dollar_volume: 10000000
+  minimum_close_ratio: 0.20
+  maximum_close_ratio: 5.0
+  live_submission_enabled: false
+
+paper_trading:
+  paper_capital: 100000
+  position_fraction: 0.02
+  maximum_symbol_fraction: 0.05
+  maximum_orders_per_day: 3
+  stop_loss: 0.25
+  paper_fill_slippage_bps: 5.0
+  paper_exit_slippage_bps: 5.0
+  live_submission_enabled: false
+
+forward_observation:
+  start_date: "2026-08-10"
+  execution_protocol:
+    # Declared before the 2026-09-02 market open. Earlier IEX evidence remains
+    # immutable diagnostics and is excluded from promotion decisions.
+    effective_entry_date: "2026-09-02"
+    feed: "sip"
+    quote_root: "data/raw/forward_quotes_sip_v1"
+    quote_summary: "reports/forward_observation/quote_coverage_sip_v1.csv"
+    execution_output: "reports/forward_observation/execution_evaluation_sip_v1.csv"
+  economic_gates:
+    initial_capital: 10000
+    position_fraction: 0.05
+    max_daily_entries: 3
+    max_concurrent_positions: 10
+    prevent_symbol_overlap: true
+    maximum_gross_exposure: 1.00
+    short_borrow_bps_annual: 1000
+    target_cagr: 0.40
+    maximum_acceptable_drawdown: 0.25
+  gates:
+    minimum_settled_observations: 100
+    minimum_independent_signal_dates: 60
+    minimum_calendar_span_days: 180
+    minimum_positive_candidate_fraction: 0.75
+  operational_gates:
+    minimum_execution_coverage: 0.95
+    minimum_snapshot_coverage: 0.95
+    minimum_shortable_fraction: 1.0
+    minimum_easy_to_borrow_fraction: 0.95
+    maximum_median_spread_bps: 50.0
+    require_actual_locates: true

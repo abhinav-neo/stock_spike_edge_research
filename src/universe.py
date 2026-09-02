@@ -5,8 +5,6 @@ import io
 import os
 import re
 from pathlib import Path
-from typing import Iterable
-
 import pandas as pd
 import requests
 
