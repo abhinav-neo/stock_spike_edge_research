@@ -49,6 +49,8 @@ spreads, actual locate evidence, healthy paper-account controls, at least 40% ex
 portfolio CAGR, and maximum daily mark-to-market drawdown no worse than 25%.
 The executable portfolio also accrues a conservative 10% annual short-borrow charge,
 must retain positive equity, and may never exceed 100% gross marked exposure.
+Its $10,000 initial-capital scale matches the connected paper account; the operational
+gate verifies both account equity and buying power and uses whole-share sizing.
 
 These are elapsed forward-evidence requirements, not missing software. They must not be
 backfilled, weakened, or bypassed to manufacture a production approval.

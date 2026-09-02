@@ -88,7 +88,7 @@ forward_observation:
     quote_summary: "reports/forward_observation/quote_coverage_sip_v1.csv"
     execution_output: "reports/forward_observation/execution_evaluation_sip_v1.csv"
   economic_gates:
-    initial_capital: 100000
+    initial_capital: 10000
     position_fraction: 0.05
     max_daily_entries: 3
     max_concurrent_positions: 10

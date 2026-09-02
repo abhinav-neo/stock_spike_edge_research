@@ -124,14 +124,30 @@ def combined_verdict(
     maximum_spread = float(gates.get("maximum_median_spread_bps", 50.0))
     require_locates = bool(gates.get("require_actual_locates", True))
     account_ready = False
+    account_capital_ready = False
+    account_equity = None
+    account_buying_power = None
+    required_account_equity = float(economics.get("economic_initial_capital", 0.0)) if economics else 0.0
+    required_buying_power = required_account_equity * float(
+        economics.get("economic_maximum_gross_exposure", 1.0) if economics else 1.0
+    )
     if accounts is not None and len(accounts):
         account = accounts.sort_values("snapshot_date").iloc[-1]
+        equity_value = pd.to_numeric(account.get("equity"), errors="coerce")
+        buying_power_value = pd.to_numeric(account.get("buying_power"), errors="coerce")
+        account_equity = float(equity_value) if pd.notna(equity_value) else None
+        account_buying_power = float(buying_power_value) if pd.notna(buying_power_value) else None
+        account_capital_ready = bool(
+            account_equity is not None and account_buying_power is not None
+            and account_equity >= required_account_equity and account_buying_power >= required_buying_power
+        )
         account_ready = bool(
             str(account.get("status", "")).upper() == "ACTIVE"
             and bool(account.get("shorting_enabled", False))
             and not bool(account.get("trading_blocked", True))
             and not bool(account.get("account_blocked", True))
             and not bool(account.get("trade_suspended_by_user", True))
+            and account_capital_ready
         )
     operational = bool(
         len(eligible_settled_ids) > 0
@@ -176,6 +192,11 @@ def combined_verdict(
         "unknown_locate_decisions": int(len(unknown_locate_ids)),
         "actual_locates_required": require_locates,
         "account_controls_ready": account_ready,
+        "account_capital_ready": account_capital_ready,
+        "account_equity": account_equity,
+        "account_buying_power": account_buying_power,
+        "required_account_equity": required_account_equity,
+        "required_buying_power": required_buying_power,
         "operational_gate_passed": operational,
         "breakthrough": breakthrough,
         "verdict": "BREAKTHROUGH" if breakthrough else "CONTINUE_FORWARD_COLLECTION",

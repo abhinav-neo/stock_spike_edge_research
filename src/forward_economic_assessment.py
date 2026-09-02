@@ -85,9 +85,16 @@ def capital_reserving_metrics(
     normalized = trades.copy()
     for column in ["entry_date", "exit_date"]:
         normalized[column] = pd.to_datetime(normalized[column]).dt.normalize()
-    accepted, rejected = select_capacity(normalized, max_daily, max_concurrent, prevent_overlap)
+    target_notional = initial_capital * position_fraction
+    affordable = pd.to_numeric(normalized["entry_touch_price"], errors="coerce").le(target_notional)
+    insufficient_notional = int((~affordable).sum())
+    accepted, rejected = select_capacity(
+        normalized.loc[affordable], max_daily, max_concurrent, prevent_overlap
+    )
     if accepted.empty:
-        return accepted, pd.DataFrame(), {**base, "economic_rejected_trades": int(len(rejected))}
+        return accepted, pd.DataFrame(), {
+            **base, "economic_rejected_trades": int(len(rejected)) + insufficient_notional,
+        }
 
     price_data = prices[["date", "symbol", "close"]].copy()
     price_data["date"] = pd.to_datetime(price_data["date"]).dt.normalize()
@@ -96,7 +103,7 @@ def capital_reserving_metrics(
         price_data["date"].between(accepted["entry_date"].min(), accepted["exit_date"].max()), "date"
     ].unique())
     cash = initial_capital
-    notional = initial_capital * position_fraction
+    notional = target_notional
     open_positions: list[dict] = []
     curve_rows: list[dict] = []
     required_marks = available_marks = 0
@@ -115,12 +122,14 @@ def capital_reserving_metrics(
             cost_rate = float(trade["quote_gross_return"]) - float(trade["quote_net_return"])
             available_notional = cash / (1.0 + cost_rate) if cost_rate > -1.0 else 0.0
             allocated = min(notional, max(available_notional, 0.0))
-            if allocated <= 0:
+            shares = np.floor(allocated / float(trade["entry_touch_price"]))
+            if shares < 1:
                 continue
+            allocated = float(shares * float(trade["entry_touch_price"]))
             cash -= allocated * (1.0 + cost_rate)
             item = trade.to_dict()
             item["notional"] = allocated
-            item["shares"] = allocated / float(trade["entry_touch_price"])
+            item["shares"] = shares
             open_positions.append(item)
 
         marked_value = 0.0
@@ -162,7 +171,7 @@ def capital_reserving_metrics(
     metrics = {
         **base,
         "economic_accepted_trades": int(len(accepted)),
-        "economic_rejected_trades": int(len(rejected)),
+        "economic_rejected_trades": int(len(rejected)) + insufficient_notional,
         "economic_ending_equity": ending_equity,
         "economic_cagr": float(cagr) if np.isfinite(cagr) else None,
         "economic_max_drawdown": drawdown,

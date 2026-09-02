@@ -11,7 +11,8 @@ to observations whose entry date is September 2, 2026 or later.
 - Round-trip cost: 100 bps, applied once
 - Quote root: `data/raw/forward_quotes_sip_v1`
 - Promotion statistics: executable SIP quote-side net returns only
-- Portfolio sizing: 5% of initial capital per accepted position
+- Portfolio sizing: 5% of the actual $10,000 paper-account scale per accepted position
+- Share sizing: whole shares only; unaffordable positions are rejected
 - Capacity: at most 3 entries per day and 10 concurrent positions
 - Repeated-symbol positions: rejected while an earlier position remains open
 - Economic target: at least 40% CAGR with maximum drawdown no worse than 25%

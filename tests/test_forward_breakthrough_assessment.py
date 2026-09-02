@@ -17,6 +17,7 @@ def evidence_frames():
     executions = pd.DataFrame([{"entry_spread_bps": 10.0, "exit_spread_bps": 12.0}])
     accounts = pd.DataFrame([{
         "snapshot_date": "2026-08-10", "status": "ACTIVE", "shorting_enabled": True,
+        "equity": 10000, "buying_power": 40000,
         "trading_blocked": False, "account_blocked": False, "trade_suspended_by_user": False,
     }])
     eligibility = pd.DataFrame([{
@@ -77,6 +78,19 @@ def test_execution_for_rejected_signal_fails_integrity_gate() -> None:
     )
     assert result["integrity_gate_passed"] is False
     assert result["rejected_signal_executions"] == 1
+    assert result["operational_gate_passed"] is False
+
+
+def test_insufficient_account_capital_prevents_operational_promotion() -> None:
+    ledger, snapshots, executions, accounts, eligibility, locates = evidence_frames()
+    result = combined_verdict(
+        {"statistical_gate_passed": True}, ledger, snapshots, executions, {}, accounts, eligibility, locates,
+        economics={
+            "economic_gate_passed": True, "economic_initial_capital": 100_000,
+            "economic_maximum_gross_exposure": 1.0,
+        },
+    )
+    assert result["account_capital_ready"] is False
     assert result["operational_gate_passed"] is False
 
 

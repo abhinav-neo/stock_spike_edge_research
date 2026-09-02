@@ -93,3 +93,20 @@ def test_marked_gross_exposure_limit_blocks_gate() -> None:
     })
     assert metrics["economic_max_gross_exposure"] > 0.50
     assert metrics["economic_gate_passed"] is False
+
+
+def test_unaffordable_whole_share_is_rejected() -> None:
+    trades = pd.DataFrame([{
+        "observation_id": "one", "signal_date": "2026-09-01", "candidate_rank": 1,
+        "candidate_key": "locked", "symbol": "AAA", "direction": "short",
+        "entry_date": "2026-09-02", "exit_date": "2026-09-04",
+        "entry_touch_price": 10.0, "exit_touch_price": 9.0,
+        "quote_gross_return": 0.10, "quote_net_return": 0.09,
+    }])
+    prices = pd.DataFrame({"date": pd.to_datetime(["2026-09-02"]), "symbol": ["AAA"], "close": [10.0]})
+    accepted, _, metrics = capital_reserving_metrics(
+        trades, prices, {"initial_capital": 100, "position_fraction": 0.05}
+    )
+    assert accepted.empty
+    assert metrics["economic_rejected_trades"] == 1
+    assert metrics["economic_gate_passed"] is False
