@@ -87,6 +87,14 @@ forward_observation:
     quote_root: "data/raw/forward_quotes_sip_v1"
     quote_summary: "reports/forward_observation/quote_coverage_sip_v1.csv"
     execution_output: "reports/forward_observation/execution_evaluation_sip_v1.csv"
+  economic_gates:
+    initial_capital: 100000
+    position_fraction: 0.05
+    max_daily_entries: 3
+    max_concurrent_positions: 10
+    prevent_symbol_overlap: true
+    target_cagr: 0.40
+    maximum_acceptable_drawdown: 0.25
   gates:
     minimum_settled_observations: 100
     minimum_independent_signal_dates: 60

@@ -32,6 +32,7 @@ pipeline stages remain idempotent.
 - Integrity gate: passed
 - Statistical gate: not yet passed
 - Operational gate: not yet passed
+- Economic gate (40% CAGR / 25% maximum drawdown): not yet passed
 - Allocation fraction: 0%
 - Verdict: `CONTINUE_FORWARD_COLLECTION`
 
@@ -44,7 +45,8 @@ Promotion is deliberately impossible until the locked evidence reaches all confi
 thresholds: at least 100 settled observations, 60 independent signal dates, 180 calendar
 days, the required positive-candidate fraction, at least 95% executable quote coverage,
 broker metadata coverage, shortability/easy-to-borrow thresholds, acceptable touch
-spreads, actual locate evidence, and healthy paper-account controls.
+spreads, actual locate evidence, healthy paper-account controls, at least 40% executable
+portfolio CAGR, and maximum daily mark-to-market drawdown no worse than 25%.
 
 These are elapsed forward-evidence requirements, not missing software. They must not be
 backfilled, weakened, or bypassed to manufacture a production approval.
@@ -67,4 +69,5 @@ named SIP-v1 protocol was therefore declared prospectively before the September 
 open. It uses only SIP quote-side net returns for promotion and excludes all earlier IEX
 observations. No SIP history is backfilled. The new execution cohort currently has zero
 settled observations, so its return, confidence interval, and spread statistics are not
-yet available. All original evidence remains immutable and all thresholds remain locked.
+yet available. Its capital-reserving economic assessment also has no CAGR or drawdown
+result yet. All original evidence remains immutable and all thresholds remain locked.

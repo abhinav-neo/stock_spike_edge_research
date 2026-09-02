@@ -7,7 +7,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from src.atomic_io import atomic_write_json
+from src.atomic_io import atomic_write_csv, atomic_write_json
+from src.forward_economic_assessment import capital_reserving_metrics, executable_trades
 from src.forward_observation import evaluate_evidence
 
 
@@ -30,6 +31,7 @@ def combined_verdict(
     eligibility: pd.DataFrame | None = None,
     locates: pd.DataFrame | None = None,
     minimum_entry_date: pd.Timestamp | None = None,
+    economics: dict | None = None,
 ) -> dict:
     settled = ledger.loc[ledger["observation_status"].eq("SETTLED")].copy() if len(ledger) else ledger
     eligibility = eligibility if eligibility is not None else pd.DataFrame()
@@ -144,9 +146,12 @@ def combined_verdict(
         and account_ready
         and (not require_locates or locate_coverage >= 0.95)
     )
-    breakthrough = bool(statistical.get("statistical_gate_passed", False) and operational)
+    economics = economics or {"economic_gate_passed": False}
+    economic_passed = bool(economics.get("economic_gate_passed", False))
+    breakthrough = bool(statistical.get("statistical_gate_passed", False) and operational and economic_passed)
     return {
         **statistical,
+        **economics,
         "execution_coverage": execution_coverage,
         "integrity_gate_passed": integrity_passed,
         "duplicate_observations": duplicate_observations,
@@ -187,6 +192,9 @@ def main() -> None:
     parser.add_argument("--accounts", default="reports/forward_observation/account_snapshots.csv")
     parser.add_argument("--eligibility", default="reports/forward_observation/eligibility.csv")
     parser.add_argument("--locates", default="reports/forward_observation/locate_evidence.csv")
+    parser.add_argument("--prices", default="data/processed/daily_prices.parquet")
+    parser.add_argument("--economic-trades", default="reports/forward_observation/economic_trades_sip_v1.csv")
+    parser.add_argument("--economic-equity", default="reports/forward_observation/economic_equity_sip_v1.csv")
     parser.add_argument("--output", default="reports/forward_observation/verdict.json")
     args = parser.parse_args()
 
@@ -200,6 +208,13 @@ def main() -> None:
     ledger = read_csv(Path(args.ledger))
     eligibility = read_csv(Path(args.eligibility))
     executions = read_csv(Path(args.executions))
+    prices = pd.read_parquet(args.prices)
+    raw_executable = executable_trades(ledger, executions)
+    accepted_trades, equity_curve, economics = capital_reserving_metrics(
+        raw_executable, prices, observation_config.get("economic_gates", {})
+    )
+    atomic_write_csv(accepted_trades, Path(args.economic_trades))
+    atomic_write_csv(equity_curve, Path(args.economic_equity))
     if len(ledger) and len(eligibility):
         from src.forward_quote_capture import observation_id
         eligible_ids = set(
@@ -208,11 +223,15 @@ def main() -> None:
         executable_ledger = ledger.loc[
             ledger.apply(lambda row: observation_id(row) in eligible_ids, axis=1)
         ].copy()
-        if len(executions):
+        if len(accepted_trades):
+            accepted_ids = set(accepted_trades["observation_id"].astype(str))
             execution_returns = executions[["observation_id", "quote_net_return"]]
             executable_ledger = executable_ledger.assign(
                 observation_id=executable_ledger.apply(observation_id, axis=1)
-            ).merge(execution_returns, on="observation_id", how="inner")
+            )
+            executable_ledger = executable_ledger.loc[
+                executable_ledger["observation_id"].astype(str).isin(accepted_ids)
+            ].merge(execution_returns, on="observation_id", how="inner")
             executable_ledger["net_return"] = executable_ledger["quote_net_return"]
         else:
             executable_ledger = executable_ledger.iloc[0:0]
@@ -220,7 +239,7 @@ def main() -> None:
     result = combined_verdict(
         statistical, ledger, read_csv(Path(args.snapshots)), executions, gates,
         read_csv(Path(args.accounts)), eligibility,
-        read_csv(Path(args.locates)), protocol_start,
+        read_csv(Path(args.locates)), protocol_start, economics,
     )
     output = Path(args.output)
     atomic_write_json(result, output)

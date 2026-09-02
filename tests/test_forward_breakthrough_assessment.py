@@ -34,11 +34,22 @@ def evidence_frames():
 def test_breakthrough_requires_both_statistical_and_operational_gates() -> None:
     ledger, snapshots, executions, accounts, eligibility, locates = evidence_frames()
     result = combined_verdict(
-        {"statistical_gate_passed": True}, ledger, snapshots, executions, {}, accounts, eligibility, locates
+        {"statistical_gate_passed": True}, ledger, snapshots, executions, {}, accounts, eligibility, locates,
+        economics={"economic_gate_passed": True},
     )
     assert result["operational_gate_passed"] is True
     assert result["breakthrough"] is True
     assert result["verdict"] == "BREAKTHROUGH"
+
+
+def test_missing_economic_gate_blocks_breakthrough() -> None:
+    ledger, snapshots, executions, accounts, eligibility, locates = evidence_frames()
+    result = combined_verdict(
+        {"statistical_gate_passed": True}, ledger, snapshots, executions, {}, accounts, eligibility, locates
+    )
+    assert result["operational_gate_passed"] is True
+    assert result["economic_gate_passed"] is False
+    assert result["breakthrough"] is False
 
 
 def test_missing_actual_locates_blocks_operational_gate() -> None:
