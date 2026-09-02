@@ -42,3 +42,12 @@ def test_execution_evaluation_reconciles_quote_and_bar_returns(tmp_path) -> None
     assert len(result) == 1
     assert result.iloc[0]["quote_net_return"] == pytest.approx(0.09)
     assert result.iloc[0]["execution_delta"] == pytest.approx(0.04)
+
+
+def test_execution_evaluation_excludes_pre_protocol_entries(tmp_path) -> None:
+    ledger = pd.DataFrame([{
+        "signal_date": "2026-08-10", "candidate_key": "locked", "symbol": "AAA", "direction": "short",
+        "entry_date": "2026-09-01", "observation_status": "SETTLED", "net_return": 0.05,
+    }])
+    result = evaluate_executions(ledger, tmp_path, 100, pd.Timestamp("2026-09-02"))
+    assert result.empty

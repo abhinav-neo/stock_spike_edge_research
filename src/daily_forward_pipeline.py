@@ -4,6 +4,14 @@ import argparse
 import subprocess
 import sys
 from datetime import date
+from pathlib import Path
+
+import yaml
+
+
+def execution_protocol(config_path: str = "config/alpha_factory.yaml") -> dict[str, str]:
+    config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+    return config["forward_observation"]["execution_protocol"]
 
 
 def commands(end_date: str, skip_data_update: bool, symbols: list[str]) -> list[list[str]]:
@@ -22,9 +30,24 @@ def commands(end_date: str, skip_data_update: bool, symbols: list[str]) -> list[
     result.append([sys.executable, "-B", "-m", "src.forward_eligibility"])
     result.append([sys.executable, "-B", "-m", "src.alpaca_locate_evidence"])
     result.append([sys.executable, "-B", "-m", "src.alpaca_account_snapshot", "--date", end_date])
-    result.append([sys.executable, "-B", "-m", "src.forward_quote_capture"])
-    result.append([sys.executable, "-B", "-m", "src.forward_execution_evaluation"])
-    result.append([sys.executable, "-B", "-m", "src.forward_breakthrough_assessment"])
+    protocol = execution_protocol()
+    protocol_start = protocol["effective_entry_date"]
+    quote_root = protocol["quote_root"]
+    execution_output = protocol["execution_output"]
+    result.append([
+        sys.executable, "-B", "-m", "src.forward_quote_capture",
+        "--feed", protocol["feed"], "--minimum-entry-date", protocol_start,
+        "--output", quote_root, "--summary", protocol["quote_summary"],
+    ])
+    result.append([
+        sys.executable, "-B", "-m", "src.forward_execution_evaluation",
+        "--minimum-entry-date", protocol_start, "--quotes", quote_root,
+        "--output", execution_output,
+    ])
+    result.append([
+        sys.executable, "-B", "-m", "src.forward_breakthrough_assessment",
+        "--executions", execution_output,
+    ])
     return result
 
 

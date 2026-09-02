@@ -29,6 +29,7 @@ def combined_verdict(
     accounts: pd.DataFrame | None = None,
     eligibility: pd.DataFrame | None = None,
     locates: pd.DataFrame | None = None,
+    minimum_entry_date: pd.Timestamp | None = None,
 ) -> dict:
     settled = ledger.loc[ledger["observation_status"].eq("SETTLED")].copy() if len(ledger) else ledger
     eligibility = eligibility if eligibility is not None else pd.DataFrame()
@@ -41,6 +42,13 @@ def combined_verdict(
         from src.forward_quote_capture import observation_id
         settled_ids = {observation_id(row) for _, row in settled.iterrows()}
     eligible_settled_ids = settled_ids & eligible_ids
+    if minimum_entry_date is not None and len(settled):
+        protocol_rows = settled.loc[
+            pd.to_datetime(settled["entry_date"], errors="coerce") >= pd.Timestamp(minimum_entry_date)
+        ]
+        from src.forward_quote_capture import observation_id
+        protocol_ids = {observation_id(row) for _, row in protocol_rows.iterrows()}
+        eligible_settled_ids &= protocol_ids
     execution_ids = set(executions["observation_id"].astype(str)) if len(executions) else set()
     ledger_ids = set()
     duplicate_observations = 0
@@ -186,9 +194,12 @@ def main() -> None:
     statistical = json.loads(statistical_path.read_text(encoding="utf-8"))
     config = yaml.safe_load(Path(args.config).read_text())
     observation_config = config.get("forward_observation", {})
+    protocol = observation_config.get("execution_protocol", {})
+    protocol_start = pd.Timestamp(protocol["effective_entry_date"]) if protocol.get("effective_entry_date") else None
     gates = observation_config.get("operational_gates", {})
     ledger = read_csv(Path(args.ledger))
     eligibility = read_csv(Path(args.eligibility))
+    executions = read_csv(Path(args.executions))
     if len(ledger) and len(eligibility):
         from src.forward_quote_capture import observation_id
         eligible_ids = set(
@@ -197,11 +208,19 @@ def main() -> None:
         executable_ledger = ledger.loc[
             ledger.apply(lambda row: observation_id(row) in eligible_ids, axis=1)
         ].copy()
+        if len(executions):
+            execution_returns = executions[["observation_id", "quote_net_return"]]
+            executable_ledger = executable_ledger.assign(
+                observation_id=executable_ledger.apply(observation_id, axis=1)
+            ).merge(execution_returns, on="observation_id", how="inner")
+            executable_ledger["net_return"] = executable_ledger["quote_net_return"]
+        else:
+            executable_ledger = executable_ledger.iloc[0:0]
         statistical = evaluate_evidence(executable_ledger, observation_config.get("gates", {}))
     result = combined_verdict(
-        statistical, ledger, read_csv(Path(args.snapshots)), read_csv(Path(args.executions)), gates,
+        statistical, ledger, read_csv(Path(args.snapshots)), executions, gates,
         read_csv(Path(args.accounts)), eligibility,
-        read_csv(Path(args.locates)),
+        read_csv(Path(args.locates)), protocol_start,
     )
     output = Path(args.output)
     atomic_write_json(result, output)

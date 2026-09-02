@@ -33,10 +33,16 @@ def capture_available_windows(
     output: Path,
     feed: str = "iex",
     eligible_ids: set[str] | None = None,
+    minimum_entry_date: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     summaries = []
     output.mkdir(parents=True, exist_ok=True)
     for _, row in ledger.iterrows():
+        entry_date = pd.to_datetime(row.get("entry_date"), errors="coerce")
+        if minimum_entry_date is not None and (
+            pd.isna(entry_date) or entry_date < pd.Timestamp(minimum_entry_date)
+        ):
+            continue
         identifier = observation_id(row)
         if eligible_ids is not None and identifier not in eligible_ids:
             continue
@@ -61,6 +67,7 @@ def capture_available_windows(
                 "symbol": row["symbol"],
                 "direction": row["direction"],
                 "phase": phase,
+                "feed": feed,
                 "status": status,
                 **coverage_metrics(quotes),
             })
@@ -73,6 +80,7 @@ def main() -> None:
     parser.add_argument("--output", default="data/raw/forward_quotes")
     parser.add_argument("--summary", default="reports/forward_observation/quote_coverage.csv")
     parser.add_argument("--feed", choices=["iex", "sip"], default="iex")
+    parser.add_argument("--minimum-entry-date")
     parser.add_argument("--eligibility", default="reports/forward_observation/eligibility.csv")
     args = parser.parse_args()
 
@@ -90,7 +98,8 @@ def main() -> None:
     else:
         key, secret = credentials_from_environment()
         summary = capture_available_windows(
-            ledger, AlpacaHistoricalClient(key, secret), Path(args.output), feed=args.feed, eligible_ids=eligible_ids
+            ledger, AlpacaHistoricalClient(key, secret), Path(args.output), feed=args.feed, eligible_ids=eligible_ids,
+            minimum_entry_date=pd.Timestamp(args.minimum_entry_date) if args.minimum_entry_date else None,
         )
     summary_path = Path(args.summary)
     atomic_write_csv(summary, summary_path)

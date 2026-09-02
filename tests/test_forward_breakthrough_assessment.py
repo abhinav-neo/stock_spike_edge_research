@@ -77,3 +77,16 @@ def test_unknown_locate_decision_fails_integrity_gate() -> None:
     )
     assert result["integrity_gate_passed"] is False
     assert result["unknown_locate_decisions"] == 1
+
+
+def test_pre_protocol_settlement_is_not_required_execution_coverage() -> None:
+    ledger, snapshots, executions, accounts, eligibility, locates = evidence_frames()
+    ledger["entry_date"] = "2026-09-01"
+    executions = executions.iloc[0:0]
+    result = combined_verdict(
+        {"statistical_gate_passed": False}, ledger, snapshots, executions, {}, accounts,
+        eligibility, locates, pd.Timestamp("2026-09-02"),
+    )
+    assert result["execution_coverage"] == 0.0
+    assert result["integrity_gate_passed"] is True
+    assert result["operational_gate_passed"] is False

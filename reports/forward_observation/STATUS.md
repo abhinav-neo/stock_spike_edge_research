@@ -17,11 +17,11 @@ pipeline stages remain idempotent.
 - Locked observations: 45
 - Open observations: 17
 - Settled ledger observations: 28
-- Execution-evaluable settled observations: 20
+- SIP-v1 execution-evaluable settled observations: 0
 - Broker-eligible observations: 30
 - Broker-rejected/quarantined observations: 15
-- Quote-window coverage rows: 50
-- Median captured touch spread: 2,817 bps (gate maximum: 50 bps)
+- SIP-v1 quote-window coverage rows: 0
+- SIP-v1 median captured touch spread: unavailable (gate maximum: 50 bps)
 - Account controls ready: yes
 - Actual locate decisions required: 30
 - Broker-established ETB locates confirmed: 30
@@ -60,9 +60,11 @@ collector was deployed after their entries; they cannot be used for event-risk f
 promotion. Twenty-one observations from August 17 onward were captured before their
 inferred next-session entry open and are causally eligible event-risk records.
 
-Current quote evidence is operationally unfavorable: the median captured touch spread is
-roughly 2,817 bps across the current executable evidence, versus the locked maximum of
-50 bps. The 20 execution-evaluable settled observations have a mean net return of 1.97%,
-but the 95% confidence interval is -1.73% to 5.66% and only 50% are positive, versus the
-locked 75% minimum. This remains an interim result because the 100-observation,
-60-independent-date, and 180-day minimums are unmet. The thresholds will not be weakened.
+The original IEX diagnostic cohort produced a 2,817 bps median boundary-touch spread.
+An audit found that its first 09:30 quote was not a reliable market-wide executable
+proxy: the same HZO window measured 2,829 bps on IEX and 26.9 bps on SIP. A separately
+named SIP-v1 protocol was therefore declared prospectively before the September 2 market
+open. It uses only SIP quote-side net returns for promotion and excludes all earlier IEX
+observations. No SIP history is backfilled. The new execution cohort currently has zero
+settled observations, so its return, confidence interval, and spread statistics are not
+yet available. All original evidence remains immutable and all thresholds remain locked.

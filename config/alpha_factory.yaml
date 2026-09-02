@@ -79,6 +79,14 @@ paper_trading:
 
 forward_observation:
   start_date: "2026-08-10"
+  execution_protocol:
+    # Declared before the 2026-09-02 market open. Earlier IEX evidence remains
+    # immutable diagnostics and is excluded from promotion decisions.
+    effective_entry_date: "2026-09-02"
+    feed: "sip"
+    quote_root: "data/raw/forward_quotes_sip_v1"
+    quote_summary: "reports/forward_observation/quote_coverage_sip_v1.csv"
+    execution_output: "reports/forward_observation/execution_evaluation_sip_v1.csv"
   gates:
     minimum_settled_observations: 100
     minimum_independent_signal_dates: 60

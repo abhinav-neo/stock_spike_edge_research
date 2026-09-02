@@ -31,10 +31,20 @@ def touch_fill(quotes: pd.DataFrame, direction: str, phase: str) -> tuple[pd.Tim
     return pd.Timestamp(quote["timestamp"]), price, spread_bps
 
 
-def evaluate_executions(ledger: pd.DataFrame, quote_root: Path, cost_bps: float) -> pd.DataFrame:
+def evaluate_executions(
+    ledger: pd.DataFrame,
+    quote_root: Path,
+    cost_bps: float,
+    minimum_entry_date: pd.Timestamp | None = None,
+) -> pd.DataFrame:
     rows = []
     settled = ledger.loc[ledger["observation_status"].eq("SETTLED")] if len(ledger) else ledger
     for _, observation in settled.iterrows():
+        entry_date = pd.to_datetime(observation.get("entry_date"), errors="coerce")
+        if minimum_entry_date is not None and (
+            pd.isna(entry_date) or entry_date < pd.Timestamp(minimum_entry_date)
+        ):
+            continue
         identifier = observation_id(observation)
         base = quote_root / f"observation={identifier}"
         entry_path = base / "phase=entry" / "quotes.parquet"
@@ -74,11 +84,15 @@ def main() -> None:
     parser.add_argument("--quotes", default="data/raw/forward_quotes")
     parser.add_argument("--output", default="reports/forward_observation/execution_evaluation.csv")
     parser.add_argument("--cost-bps", type=float, default=100.0)
+    parser.add_argument("--minimum-entry-date")
     args = parser.parse_args()
 
     ledger_path = Path(args.ledger)
     ledger = pd.read_csv(ledger_path) if ledger_path.exists() and ledger_path.stat().st_size else pd.DataFrame()
-    result = evaluate_executions(ledger, Path(args.quotes), args.cost_bps)
+    result = evaluate_executions(
+        ledger, Path(args.quotes), args.cost_bps,
+        pd.Timestamp(args.minimum_entry_date) if args.minimum_entry_date else None,
+    )
     output = Path(args.output)
     atomic_write_csv(result, output)
     print(f"Executable forward outcomes: {len(result)}. No orders were submitted.")

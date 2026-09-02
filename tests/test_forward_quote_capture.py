@@ -49,3 +49,17 @@ def test_capture_skips_broker_ineligible_observations(tmp_path) -> None:
     client = Client()
     assert capture_available_windows(row(), client, tmp_path, eligible_ids=set()).empty
     assert client.calls == []
+
+
+def test_capture_enforces_prospective_protocol_start_and_records_feed(tmp_path) -> None:
+    client = Client()
+    ledger = pd.concat([
+        row().assign(entry_date="2026-09-01"),
+        row().assign(signal_date="2026-09-01", entry_date="2026-09-02", exit_date="2026-09-08"),
+    ], ignore_index=True)
+    result = capture_available_windows(
+        ledger, client, tmp_path, feed="sip", minimum_entry_date=pd.Timestamp("2026-09-02")
+    )
+    assert len(result) == 2
+    assert result["feed"].eq("sip").all()
+    assert {call[3] for call in client.calls} == {"sip"}
