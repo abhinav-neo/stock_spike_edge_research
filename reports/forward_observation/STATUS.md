@@ -47,6 +47,8 @@ days, the required positive-candidate fraction, at least 95% executable quote co
 broker metadata coverage, shortability/easy-to-borrow thresholds, acceptable touch
 spreads, actual locate evidence, healthy paper-account controls, at least 40% executable
 portfolio CAGR, and maximum daily mark-to-market drawdown no worse than 25%.
+The executable portfolio also accrues a conservative 10% annual short-borrow charge,
+must retain positive equity, and may never exceed 100% gross marked exposure.
 
 These are elapsed forward-evidence requirements, not missing software. They must not be
 backfilled, weakened, or bypassed to manufacture a production approval.

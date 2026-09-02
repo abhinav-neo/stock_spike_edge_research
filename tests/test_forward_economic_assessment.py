@@ -54,3 +54,42 @@ def test_missing_marks_fail_economic_gate() -> None:
     _, _, metrics = capital_reserving_metrics(trades, prices, {})
     assert metrics["economic_mtm_coverage"] == 0.0
     assert metrics["economic_gate_passed"] is False
+
+
+def test_short_borrow_is_accrued_daily_and_reduces_ending_equity() -> None:
+    trades = pd.DataFrame([{
+        "observation_id": "one", "signal_date": "2026-09-01", "candidate_rank": 1,
+        "candidate_key": "locked", "symbol": "AAA", "direction": "short",
+        "entry_date": "2026-09-02", "exit_date": "2026-09-04",
+        "entry_touch_price": 10.0, "exit_touch_price": 9.0,
+        "quote_gross_return": 0.10, "quote_net_return": 0.09,
+    }])
+    prices = pd.DataFrame({
+        "date": pd.to_datetime(["2026-09-02", "2026-09-03", "2026-09-04"]),
+        "symbol": ["AAA", "AAA", "AAA"], "close": [10.0, 10.0, 9.0],
+    })
+    _, curve, metrics = capital_reserving_metrics(trades, prices, {
+        "short_borrow_bps_annual": 36525,
+    })
+    assert curve["daily_borrow_cost"].sum() == pytest.approx(100.0)
+    assert metrics["economic_ending_equity"] == pytest.approx(100_350.0)
+
+
+def test_marked_gross_exposure_limit_blocks_gate() -> None:
+    trades = pd.DataFrame([{
+        "observation_id": "one", "signal_date": "2026-09-01", "candidate_rank": 1,
+        "candidate_key": "locked", "symbol": "AAA", "direction": "short",
+        "entry_date": "2026-09-02", "exit_date": "2026-09-04",
+        "entry_touch_price": 10.0, "exit_touch_price": 9.0,
+        "quote_gross_return": 0.10, "quote_net_return": 0.09,
+    }])
+    prices = pd.DataFrame({
+        "date": pd.to_datetime(["2026-09-02", "2026-09-03", "2026-09-04"]),
+        "symbol": ["AAA", "AAA", "AAA"], "close": [30.0, 10.0, 9.0],
+    })
+    _, _, metrics = capital_reserving_metrics(trades, prices, {
+        "position_fraction": 0.20, "maximum_gross_exposure": 0.50,
+        "maximum_acceptable_drawdown": 1.0,
+    })
+    assert metrics["economic_max_gross_exposure"] > 0.50
+    assert metrics["economic_gate_passed"] is False

@@ -61,16 +61,22 @@ def capital_reserving_metrics(
     prevent_overlap = bool(config.get("prevent_symbol_overlap", True))
     target_cagr = float(config.get("target_cagr", 0.40))
     maximum_drawdown = float(config.get("maximum_acceptable_drawdown", 0.25))
+    maximum_gross_exposure = float(config.get("maximum_gross_exposure", 1.0))
+    short_borrow_rate = float(config.get("short_borrow_bps_annual", 0.0)) / 10_000.0
     base = {
         "economic_initial_capital": initial_capital,
         "economic_position_fraction": position_fraction,
         "economic_target_cagr": target_cagr,
         "economic_maximum_acceptable_drawdown": maximum_drawdown,
+        "economic_maximum_gross_exposure": maximum_gross_exposure,
+        "economic_short_borrow_bps_annual": short_borrow_rate * 10_000.0,
         "economic_accepted_trades": 0,
         "economic_rejected_trades": 0,
         "economic_cagr": None,
         "economic_max_drawdown": None,
         "economic_mtm_coverage": 0.0,
+        "economic_max_gross_exposure": None,
+        "economic_minimum_equity": None,
         "economic_gate_passed": False,
     }
     if trades.empty:
@@ -118,6 +124,8 @@ def capital_reserving_metrics(
             open_positions.append(item)
 
         marked_value = 0.0
+        marked_gross = 0.0
+        daily_borrow_cost = 0.0
         for position in open_positions:
             required_marks += 1
             key = (day, position["symbol"])
@@ -125,10 +133,21 @@ def capital_reserving_metrics(
                 continue
             available_marks += 1
             mark = float(close_lookup.loc[key])
+            market_value = position["shares"] * mark
+            marked_gross += market_value
+            if position["direction"] == "short":
+                daily_borrow_cost += market_value * short_borrow_rate / 365.25
             direction = 1.0 if position["direction"] == "long" else -1.0
             pnl = direction * position["shares"] * (mark - position["entry_touch_price"])
             marked_value += position["notional"] + pnl
-        curve_rows.append({"date": day, "cash": cash, "open_positions": len(open_positions), "equity": cash + marked_value})
+        cash -= daily_borrow_cost
+        equity = cash + marked_value
+        gross_exposure = marked_gross / equity if equity > 0 else float("inf")
+        curve_rows.append({
+            "date": day, "cash": cash, "open_positions": len(open_positions),
+            "daily_borrow_cost": daily_borrow_cost, "gross_exposure": gross_exposure,
+            "equity": equity,
+        })
 
     curve = pd.DataFrame(curve_rows)
     curve["peak"] = curve["equity"].cummax().clip(lower=initial_capital)
@@ -138,6 +157,8 @@ def capital_reserving_metrics(
     cagr = (ending_equity / initial_capital) ** (365.25 / span_days) - 1.0 if ending_equity > 0 else -1.0
     drawdown = float(-curve["drawdown"].min())
     coverage = float(available_marks / required_marks) if required_marks else 0.0
+    max_observed_gross = float(curve["gross_exposure"].max())
+    minimum_equity = float(curve["equity"].min())
     metrics = {
         **base,
         "economic_accepted_trades": int(len(accepted)),
@@ -146,8 +167,14 @@ def capital_reserving_metrics(
         "economic_cagr": float(cagr) if np.isfinite(cagr) else None,
         "economic_max_drawdown": drawdown,
         "economic_mtm_coverage": coverage,
+        "economic_max_gross_exposure": max_observed_gross,
+        "economic_minimum_equity": minimum_equity,
     }
     metrics["economic_gate_passed"] = bool(
-        coverage >= 1.0 and cagr >= target_cagr and drawdown <= maximum_drawdown
+        coverage >= 1.0
+        and minimum_equity > 0
+        and max_observed_gross <= maximum_gross_exposure
+        and cagr >= target_cagr
+        and drawdown <= maximum_drawdown
     )
     return accepted, curve, metrics

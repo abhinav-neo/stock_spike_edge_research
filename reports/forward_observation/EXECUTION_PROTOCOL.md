@@ -16,6 +16,8 @@ to observations whose entry date is September 2, 2026 or later.
 - Repeated-symbol positions: rejected while an earlier position remains open
 - Economic target: at least 40% CAGR with maximum drawdown no worse than 25%
 - Risk measurement: capital-reserving cash ledger with daily close mark-to-market
+- Gross exposure: maximum 100% of marked equity; configured entries reserve 50% initially
+- Short borrow stress: 10% annualized, accrued daily while positions remain open
 - Capital allocation: 0%
 - Order submission: disabled
 

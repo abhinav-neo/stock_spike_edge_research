@@ -93,6 +93,8 @@ forward_observation:
     max_daily_entries: 3
     max_concurrent_positions: 10
     prevent_symbol_overlap: true
+    maximum_gross_exposure: 1.00
+    short_borrow_bps_annual: 1000
     target_cagr: 0.40
     maximum_acceptable_drawdown: 0.25
   gates:
